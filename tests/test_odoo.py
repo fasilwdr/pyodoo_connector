@@ -1,11 +1,11 @@
 import json
 import pytest
 from unittest.mock import patch, MagicMock
-from odoo_connect.odoo import Odoo
+from pyodoo_connect.odoo import Odoo
 
 
 class TestOdoo:
-    @patch('odoo_connect.odoo.urllib.request.build_opener')
+    @patch('pyodoo_connect.odoo.urllib.request.build_opener')
     def test_login_successful(self, mock_build_opener):
         # Mock response and its read().decode() method to return JSON
         mock_response = MagicMock()
@@ -22,7 +22,7 @@ class TestOdoo:
         # Check if the UID is set correctly
         assert odoo.uid == 1, "UID should be set to 1 after successful login"
 
-    @patch('odoo_connect.odoo.urllib.request.build_opener')
+    @patch('pyodoo_connect.odoo.urllib.request.build_opener')
     def test_login_failure(self, mock_build_opener):
         # Setup the mock response to simulate a login failure
         mock_response = MagicMock()
@@ -39,7 +39,7 @@ class TestOdoo:
 
         assert "Invalid credentials" in str(excinfo.value), "Should raise an exception for invalid credentials"
 
-    @patch('odoo_connect.odoo.urllib.request.build_opener')
+    @patch('pyodoo_connect.odoo.urllib.request.build_opener')
     def test_execute_function(self, mock_build_opener):
         # Setup the mock response for executing a function
         mock_response = MagicMock()

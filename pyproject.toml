@@ -3,14 +3,14 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-name = "odoo_connector"
+name = "pyodoo_connector"
 version = "0.1.0"
 author = "Fasil"
 author_email = "fasilwdr@hotmail.com"
 description = "A Python package to interact with Odoo via JSON-RPC."
 long_description = "file: README.md"
 long_description_content_type = "text/markdown"
-url = "https://github.com/fasilwdr/odoo_connector"
+url = "https://github.com/fasilwdr/pyodoo_connector"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",

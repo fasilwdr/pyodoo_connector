@@ -16,7 +16,7 @@ Odoo Connector is a Python package providing a convenient way to interact with O
 Install Odoo Connector using pip:
 
 ```bash
-pip install odoo_connector
+pip install pyodoo_connect
 ```
 
 ### Prerequisites
@@ -40,7 +40,7 @@ Before using this module, configure the connection parameters to match your Odoo
 Here is a simple example to show how you can use Odoo Connector to interact with an Odoo instance:
 ### Initializing the Connection
 ```python
-from odoo_connect import Odoo
+from pyodoo_connect import Odoo
 odoo = Odoo('https://example-odoo.com/', 'your-db', 'your-username', 'your-password')
 ```
 ### Basic Operations
