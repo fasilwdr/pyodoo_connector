@@ -1,3 +1,0 @@
-```plaintext
-# This file lists all dependencies required to run odoo_connector.
-```

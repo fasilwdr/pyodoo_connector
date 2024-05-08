@@ -1,13 +1,13 @@
 
-class Command:
-    CREATE = 0
-    UPDATE = 1
-    DELETE = 2
-    UNLINK = 3
-    LINK = 4
-    CLEAR = 5
-    SET = 6
+CREATE = 0
+UPDATE = 1
+DELETE = 2
+UNLINK = 3
+LINK = 4
+CLEAR = 5
+SET = 6
 
+class Command:
     @classmethod
     def create(cls, values: dict):
         """
@@ -24,7 +24,7 @@ class Command:
 
         Return the command triple :samp:`(CREATE, 0, {values})`
         """
-        return (cls.CREATE, 0, values)
+        return (CREATE, 0, values)
 
     @classmethod
     def update(cls, id: int, values: dict):
@@ -33,7 +33,7 @@ class Command:
 
         Return the command triple :samp:`(UPDATE, {id}, {values})`
         """
-        return (cls.UPDATE, id, values)
+        return (UPDATE, id, values)
 
     @classmethod
     def delete(cls, id: int):
@@ -47,7 +47,7 @@ class Command:
 
         Return the command triple :samp:`(DELETE, {id}, 0)`
         """
-        return (cls.DELETE, id, 0)
+        return (DELETE, id, 0)
 
     @classmethod
     def unlink(cls, id: int):
@@ -61,7 +61,7 @@ class Command:
 
         Return the command triple :samp:`(UNLINK, {id}, 0)`
         """
-        return (cls.UNLINK, id, 0)
+        return (UNLINK, id, 0)
 
     @classmethod
     def link(cls, id: int):
@@ -70,7 +70,7 @@ class Command:
 
         Return the command triple :samp:`(LINK, {id}, 0)`
         """
-        return (cls.LINK, id, 0)
+        return (LINK, id, 0)
 
     @classmethod
     def clear(cls):
@@ -80,7 +80,7 @@ class Command:
 
         Return the command triple :samp:`(CLEAR, 0, 0)`
         """
-        return (cls.CLEAR, 0, 0)
+        return (CLEAR, 0, 0)
 
     @classmethod
     def set(cls, ids: list):
@@ -91,4 +91,4 @@ class Command:
 
         Return the command triple :samp:`(SET, 0, {ids})`
         """
-        return (cls.SET, 0, ids)
+        return (SET, 0, ids)
