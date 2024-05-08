@@ -1,16 +1,14 @@
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
+[project]
 name = "pyodoo_connector"
 version = "0.1.0"
-author = "Fasil"
-author_email = "fasilwdr@hotmail.com"
 description = "A Python package to interact with Odoo via JSON-RPC."
-long_description = "file: README.md"
-long_description_content_type = "text/markdown"
-url = "https://github.com/fasilwdr/pyodoo_connector"
+authors = [{ name = "Fasil", email = "fasilwdr@hotmail.com" }]
+license = { file = "LICENSE" }
+readme = "README.md"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -20,7 +18,6 @@ classifiers = [
     "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.10"
 ]
-packages = ["find:"]
-python_requires = ">=3.6"
+requires-python = ">=3.6"  # specifying the Python version requirement here
