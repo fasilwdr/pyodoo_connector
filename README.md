@@ -1,7 +1,7 @@
 
-# Odoo Connector
+# PyOdoo Connector
 
-Odoo Connector is a Python package providing a convenient way to interact with Odoo platforms via JSON-RPC. It simplifies operations like logging in, executing commands, and managing records in an Odoo database.
+PyOdoo Connector is a Python package providing a convenient way to interact with Odoo platforms via JSON-RPC. It simplifies operations like logging in, executing commands, and managing records in an Odoo database.
 
 ## Features
 
