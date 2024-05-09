@@ -57,7 +57,7 @@ partner.update({'mobile': '12345678'})
 ```
 - Search for Records
 ```python
-partner_ids = odoo.env['res.partner'].search(domain=[('name', '=', 'Abigail Peterson')])
+partner_ids = odoo.env['res.partner'].search([('name', '=', 'Abigail Peterson')])
 print(partner_ids)
 #[50]
 ```
@@ -77,7 +77,18 @@ print(new_partner_id)
 ```
 - Update Records
 ```python
+#These are the ways to update records
+partner.mobile = '+91 9746707744'
+partner.write({'mobile': '+91 9746707744'})
 odoo.env['res.partner'].write(ids=new_partner_id, values={'phone': '1234567890'})
+```
+- Update Relation fields (One2many or Many2many)
+```python
+from pyodoo_connect import Command
+partner.category_id = [Command.set([5,6])]
+partner.write({'category_id': [Command.link([4,3])]})
+odoo.env['res.partner'].write(ids=new_partner_id, values={'category_id': [Command.create({'name': 'New Tag'})]})
+#All functions of Command can be used (create, update, delete, unlink, link, clear, set)
 ```
 - Delete Records
 ```python
@@ -91,6 +102,11 @@ odoo.download_report(report_name='sale.report_saleorder', record_ids=[52], file_
 ```python
 print(odoo.version)
 #17.0
+```
+- UID
+```python
+print(odoo.uid)
+#2
 ```
 - User Context
 ```python

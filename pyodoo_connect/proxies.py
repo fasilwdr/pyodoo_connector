@@ -14,6 +14,8 @@ class MethodCaller:
         self.method_name = method_name
 
     def __call__(self, *args, **kwargs):
+        if self.method_name == 'write':
+            self.method_name = 'update'
         # If there are positional arguments, assume the first is a dictionary and reformat as needed
         if args and isinstance(args[0], dict):
             kwargs = {'values': args[0]}  # Override kwargs with values from args
@@ -101,7 +103,6 @@ class ModelProxy:
         return self.odoo.call("object", "execute", self.model_name, 'search_read', domain, fields)
 
     def write(self, ids: list, values: dict):
-        print(values)
         return self.odoo.call("object", "execute", self.model_name, 'write', ids, values)
 
     def unlink(self, ids: list):
