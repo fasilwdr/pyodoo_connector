@@ -53,32 +53,31 @@ partner.name = 'New Partner Name'
 - Execute a Method on a Record
 ```python
 partner.action_archive()
-partner.update(values={'mobile': '12345678'})
+partner.update({'mobile': '12345678'})
 ```
 - Search for Records
 ```python
-search_check = odoo.env['res.partner'].search(domain=[('name', '=', 'Abigail Peterson')])
-print("search_check", search_check)
+partner_ids = odoo.env['res.partner'].search(domain=[('name', '=', 'Abigail Peterson')])
+print(partner_ids)
 ```
 - Read Records
 ```python
-read_check = odoo.env['res.partner'].read(ids=search_check, fields=['name', 'email'])
-print("read_check", read_check)
+print(partner.name)
+records = odoo.env['res.partner'].read(ids=search_check, fields=['name', 'email'])
+print(records)
 ```
 - Create a New Record
 ```python
-create_check = odoo.env['res.partner'].create({'name': 'New Partner', 'email': 'new@partner.com', 'is_company': True})
-print("create_check", create_check)
+new_partner_id = odoo.env['res.partner'].create({'name': 'New Partner', 'email': 'new@partner.com', 'is_company': True})
+print(new_partner_id)
 ```
 - Update Records
 ```python
-write_check = odoo.env['res.partner'].write(ids=[create_check], values={'phone': '1234567890'})
-print("write_check", write_check)
+odoo.env['res.partner'].write(ids=new_partner_id, values={'phone': '1234567890'})
 ```
 - Delete Records
 ```python
-unlink_check = odoo.env['res.partner'].unlink(ids=[create_check])
-print("unlink_check", unlink_check)
+odoo.env['res.partner'].unlink(ids=new_partner_id)
 ```
 - Download a QWeb Report
 ```python
