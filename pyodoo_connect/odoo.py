@@ -19,6 +19,28 @@ class Environment:
     def __init__(self, odoo_instance):
         self.odoo = odoo_instance
         self._model_cache = {}
+        self.context = {}  # Initializes an empty context
+        self.user_info = {}
+        self.settings = {}
+
+    def update_context(self, result):
+        """Update the environment with new context and other relevant data."""
+        self.context = result.get('user_context', {})
+        self.user_info = {
+            'uid': result.get('uid'),
+            'is_admin': result.get('is_admin'),
+            'name': result.get('name'),
+            'username': result.get('username'),
+            'partner_id': result.get('partner_id'),
+        }
+        self.settings = {
+            'web_base_url': result.get('web.base.url'),
+            'localization': {
+                'lang': self.context.get('lang'),
+                'tz': self.context.get('tz')
+            },
+            'company_details': result.get('user_companies', {})
+        }
 
     def __getitem__(self, model_name):
         if model_name not in self._model_cache:
@@ -37,6 +59,7 @@ class Odoo:
         self.jsonrpc_url = f"{url}jsonrpc" if url[-1] == '/' else f"{url}/jsonrpc"
         self.session = None
         self.uid = None
+        self.version = None
         self.env = Environment(self)
         self.login()  # Automatically login on initialization
 
@@ -72,16 +95,28 @@ class Odoo:
         """ Authenticate and establish a session with the Odoo server. """
         login_url = f"{self.url}/web/session/authenticate"
         headers = {'Content-Type': 'application/json'}
-        data = json.dumps({"jsonrpc": "2.0", "params": {"db": self.db, "login": self.username, "password": self.password}}).encode('utf-8')
+        data = json.dumps({
+            "jsonrpc": "2.0",
+            "params": {
+                "db": self.db,
+                "login": self.username,
+                "password": self.password
+            }
+        }).encode('utf-8')
+
         req = urllib.request.Request(login_url, data=data, headers=headers)
         self.session = urllib.request.build_opener(urllib.request.HTTPCookieProcessor())
+
         try:
             with self.session.open(req) as response:
                 result = json.loads(response.read().decode())
                 if result.get('result'):
                     self.uid = result.get('result').get('uid')
+                    self.version = result.get('result').get('server_version')
                     if self.uid is None:
                         raise Exception("Failed to obtain user ID.")
+                    # Update context
+                    self.env.update_context(result.get('result'))
                 else:
                     raise Exception("Login failed: " + str(result.get('error')))
         except HTTPError as e:

@@ -59,17 +59,21 @@ partner.update({'mobile': '12345678'})
 ```python
 partner_ids = odoo.env['res.partner'].search(domain=[('name', '=', 'Abigail Peterson')])
 print(partner_ids)
+#[50]
 ```
 - Read Records
 ```python
 print(partner.name)
-records = odoo.env['res.partner'].read(ids=search_check, fields=['name', 'email'])
+records = odoo.env['res.partner'].read(ids=partner_ids, fields=['name', 'email'])
 print(records)
+#Wood Corner
+#[{'id': 50, 'name': 'Abigail Peterson', 'email': 'abigail.peterson39@example.com'}]
 ```
 - Create a New Record
 ```python
 new_partner_id = odoo.env['res.partner'].create({'name': 'New Partner', 'email': 'new@partner.com', 'is_company': True})
 print(new_partner_id)
+#100
 ```
 - Update Records
 ```python
@@ -82,6 +86,26 @@ odoo.env['res.partner'].unlink(ids=new_partner_id)
 - Download a QWeb Report
 ```python
 odoo.download_report(report_name='sale.report_saleorder', record_ids=[52], file_name='Sales Report')
+```
+- Version
+```python
+print(odoo.version)
+#17.0
+```
+- User Context
+```python
+print(odoo.env.context)
+#{'lang': 'en_US', 'tz': 'Europe/Brussels', 'uid': 2}
+```
+- User Info
+```python
+print(odoo.env.user_info)
+#{'uid': 2, 'is_admin': True, 'name': 'Mitchell Admin', 'username': 'admin', 'partner_id': 3}
+```
+- Settings
+```python
+print(odoo.env.settings)
+#{'web_base_url': 'https://demo.odoo.com', 'localization': {'lang': 'en_US', 'tz': 'Europe/Brussels'}, 'company_details': {'current_company': 1, 'allowed_companies': {'2': {'id': 2, 'name': 'My Company (Chicago)', 'sequence': 10, 'child_ids': [], 'parent_id': False, 'timesheet_uom_id': 4, 'timesheet_uom_factor': 1.0}, '1': {'id': 1, 'name': 'My Company (San Francisco)', 'sequence': 0, 'child_ids': [], 'parent_id': False, 'timesheet_uom_id': 4, 'timesheet_uom_factor': 1.0}}, 'disallowed_ancestor_companies': {}}}
 ```
 
 ## Contributing

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyodoo_connect"
-version = "0.1.1"
+version = "0.1.2"
 description = "A Python package to interact with Odoo via JSON-RPC."
 authors = [{ name = "Fasil", email = "fasilwdr@hotmail.com" }]
 license = { file = "LICENSE" }
