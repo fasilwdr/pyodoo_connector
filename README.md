@@ -103,6 +103,13 @@ odoo.download_report(report_name='sale.report_saleorder', record_ids=[52], file_
 print(odoo.version)
 #17.0
 ```
+- With Context
+```python
+record_id = odoo.env['purchase.order'].browse(14)
+record_id.with_context({'send_rfq':True}).action_rfq_send()
+#or
+record_id.with_context(send_rfq=True).action_rfq_send()
+```
 - UID
 ```python
 print(odoo.uid)

@@ -6,53 +6,37 @@
 # Facebook: https://www.facebook.com/fasilwdr
 # Instagram: https://www.instagram.com/fasilwdr
 #############################################################################
-
-class MethodCaller:
-    def __init__(self, model_proxy, record_id, method_name):
-        self.model_proxy = model_proxy
-        self.record_id = record_id
-        self.method_name = method_name
-
-    def __call__(self, *args, **kwargs):
-        if self.method_name == 'write':
-            self.method_name = 'update'
-        # If there are positional arguments, assume the first is a dictionary and reformat as needed
-        if args and isinstance(args[0], dict):
-            kwargs = {'values': args[0]}  # Override kwargs with values from args
-        elif args:
-            # If args are not a dictionary, raise an error or handle appropriately
-            raise ValueError(
-                "Positional arguments must be a single dictionary containing the parameters for the method.")
-        return self.model_proxy.odoo.execute_function(
-            self.model_proxy.model_name,
-            [self.record_id],
-            self.method_name,
-            **kwargs
-        )
+from typing import Dict, Any
 
 
 class RecordProxy:
-    def __init__(self, model_proxy, record_id):
+    def __init__(self, model_proxy, record_id, context=None):
         self.model_proxy = model_proxy
         self.record_id = record_id
+        self.context = context if context is not None else {}
         self.values = {}
         self.loaded_fields = set()
+
+    def with_context(self, *args, **kwargs):
+        if args and isinstance(args[0], dict):
+            kwargs = args[0]
+        # Return a new instance of RecordProxy with the updated context
+        new_context = self.context.copy()
+        new_context.update(kwargs)
+        return RecordProxy(self.model_proxy, self.record_id, new_context)
 
     def __getattr__(self, name):
         if name in self.values:
             return self.values[name]
         elif name not in self.loaded_fields:
-            # Attempt to fetch the field first. If not present, treat as method
             try:
                 self.fetch_field(name)
                 return self.values.get(name, None)
             except KeyError:
                 pass
-        # If it's not a field, treat it as a method call
-        return MethodCaller(self.model_proxy, self.record_id, name)
+        return MethodCaller(self.model_proxy, self.record_id, name, self.context)
 
     def fetch_field(self, field_name):
-        # Fetch single field and check if it exists
         fields_info = self.model_proxy.fields_get([field_name], ['name', 'type'])
         if field_name not in fields_info:
             raise KeyError(f"No such field '{field_name}' on model.")
@@ -62,18 +46,40 @@ class RecordProxy:
             self.loaded_fields.add(field_name)
 
     def __setattr__(self, name, value):
-        if name in ['model_proxy', 'record_id', 'values', 'loaded_fields'] or name.startswith('_'):
+        if name in ['model_proxy', 'record_id', 'values', 'loaded_fields', 'context'] or name.startswith('_'):
             super().__setattr__(name, value)
         else:
             self.model_proxy.write(ids=[self.record_id], values={name: value})
-            self.values[name] = value  # Update the local cache after the write operation
+            self.values[name] = value
 
-    def _fetch_all(self):
-        # Optional: Method to manually fetch all fields if needed
-        fields = self.model_proxy.fields_get([], ['name'])
-        self.values = self.model_proxy.read([self.record_id], list(fields.keys()))[0]
-        self.loaded_fields.update(fields.keys())
 
+# MethodCaller class modification to include context in RPC calls
+class MethodCaller:
+    def __init__(self, model_proxy, record_id, method_name, context=None):
+        self.model_proxy = model_proxy
+        self.record_id = record_id
+        self.method_name = method_name
+        self.context = context if context is not None else {}
+
+    def __call__(self, *args, **kwargs):
+        if self.method_name == 'write':
+            self.method_name = 'update'
+        if args and isinstance(args[0], dict):
+            kwargs = {'values': args[0]}
+        elif args:
+            raise ValueError(
+                "Positional arguments must be a single dictionary containing the parameters for the method.")
+
+        # Merging context into kwargs for RPC call
+        if self.context:
+            kwargs['context'] = self.context
+
+        return self.model_proxy.odoo.execute_function(
+            self.model_proxy.model_name,
+            [self.record_id],
+            self.method_name,
+            **kwargs
+        )
 
 
 class ModelProxy:
