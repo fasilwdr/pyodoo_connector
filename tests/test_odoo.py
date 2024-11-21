@@ -94,12 +94,27 @@ class TestOdoo:
         # Verify the result
         assert result == {"status": "Success"}, "Function execution should return success status"
 
-    def test_client_cleanup(self):
+    @patch('httpx.Client')
+    def test_client_cleanup(self, mock_client):
         """Test that the client is properly closed when the Odoo instance is destroyed"""
-        mock_client = MagicMock()
+        # Setup mock client
+        mock_client_instance = MagicMock()
+        mock_login_response = MagicMock()
+        mock_login_response.json.return_value = {
+            "jsonrpc": "2.0",
+            "result": {
+                "uid": 1,
+                "server_version": "15.0",
+                "user_context": {"lang": "en_US", "tz": "UTC"},
+                "user_companies": False
+            }
+        }
+        mock_client_instance.post.return_value = mock_login_response
+        mock_client.return_value = mock_client_instance
 
-        with patch('httpx.Client', return_value=mock_client):
-            odoo = Odoo('http://fake-url.com', 'db', 'user', 'pass')
-            del odoo
+        # Create and explicitly close an Odoo instance
+        odoo = Odoo('http://fake-url.com', 'db', 'user', 'pass')
+        odoo.__del__()  # Explicitly call the destructor
 
-        mock_client.close.assert_called_once()
+        # Verify the client was closed
+        mock_client_instance.close.assert_called_once()
