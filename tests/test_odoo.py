@@ -13,54 +13,93 @@ from pyodoo_connect.odoo import Odoo
 
 
 class TestOdoo:
-    @patch('pyodoo_connect.odoo.urllib.request.build_opener')
-    def test_login_successful(self, mock_build_opener):
-        # Mock response and its read().decode() method to return JSON
+    @patch('httpx.Client')
+    def test_login_successful(self, mock_client):
+        # Mock response
         mock_response = MagicMock()
-        mock_response.read.return_value.decode.return_value = json.dumps({"jsonrpc": "2.0", "result": {"uid": 1}})
+        mock_response.json.return_value = {
+            "jsonrpc": "2.0",
+            "result": {
+                "uid": 1,
+                "server_version": "15.0",
+                "user_context": {"lang": "en_US", "tz": "UTC"},
+                "user_companies": False
+            }
+        }
+        mock_response.raise_for_status.return_value = None
 
-        # Mock opener to return the mock response
-        mock_opener = MagicMock()
-        mock_opener.open.return_value.__enter__.return_value = mock_response
-        mock_build_opener.return_value = mock_opener
+        # Setup mock client
+        mock_client_instance = MagicMock()
+        mock_client_instance.post.return_value = mock_response
+        mock_client.return_value = mock_client_instance
 
         # Create an instance of the Odoo class
         odoo = Odoo('http://fake-url.com', 'db', 'user', 'pass')
 
         # Check if the UID is set correctly
         assert odoo.uid == 1, "UID should be set to 1 after successful login"
+        assert odoo.version == "15.0", "Version should be set correctly"
 
-    @patch('pyodoo_connect.odoo.urllib.request.build_opener')
-    def test_login_failure(self, mock_build_opener):
-        # Setup the mock response to simulate a login failure
+    @patch('httpx.Client')
+    def test_login_failure(self, mock_client):
+        # Mock response for failed login
         mock_response = MagicMock()
-        mock_response.read.return_value.decode.return_value = json.dumps(
-            {"jsonrpc": "2.0", "error": "Invalid credentials"})
+        mock_response.json.return_value = {
+            "jsonrpc": "2.0",
+            "error": "Invalid credentials"
+        }
+        mock_response.raise_for_status.return_value = None
 
-        mock_opener = MagicMock()
-        mock_opener.open.return_value.__enter__.return_value = mock_response
-        mock_build_opener.return_value = mock_opener
+        # Setup mock client
+        mock_client_instance = MagicMock()
+        mock_client_instance.post.return_value = mock_response
+        mock_client.return_value = mock_client_instance
 
         # Attempt to create an instance of the Odoo class and catch the expected exception
         with pytest.raises(Exception) as excinfo:
-            odoo = Odoo('http://fake-url.com', 'db', 'user', 'pass')
+            Odoo('http://fake-url.com', 'db', 'user', 'pass')
 
-        assert "Invalid credentials" in str(excinfo.value), "Should raise an exception for invalid credentials"
+        assert "Login failed: Invalid credentials" in str(excinfo.value)
 
-    @patch('pyodoo_connect.odoo.urllib.request.build_opener')
-    def test_execute_function(self, mock_build_opener):
-        # Setup the mock response for executing a function
-        mock_response = MagicMock()
-        mock_response.read.return_value.decode.return_value = json.dumps({"jsonrpc": "2.0", "result": {"status": "Success", "uid": 1}})
+    @patch('httpx.Client')
+    def test_execute_function(self, mock_client):
+        # Mock login response
+        mock_login_response = MagicMock()
+        mock_login_response.json.return_value = {
+            "jsonrpc": "2.0",
+            "result": {
+                "uid": 1,
+                "server_version": "15.0",
+                "user_context": {"lang": "en_US", "tz": "UTC"},
+                "user_companies": False
+            }
+        }
 
-        # Mock opener to return the mock response
-        mock_opener = MagicMock()
-        mock_opener.open.return_value.__enter__.return_value = mock_response
-        mock_build_opener.return_value = mock_opener
+        # Mock execute function response
+        mock_execute_response = MagicMock()
+        mock_execute_response.json.return_value = {
+            "jsonrpc": "2.0",
+            "result": {"status": "Success"}
+        }
 
-        # Create an instance of the Odoo class and perform a function execution
+        # Setup mock client
+        mock_client_instance = MagicMock()
+        mock_client_instance.post.side_effect = [mock_login_response, mock_execute_response]
+        mock_client.return_value = mock_client_instance
+
+        # Create an instance and execute function
         odoo = Odoo('http://fake-url.com', 'db', 'user', 'pass')
         result = odoo.execute_function('res.partner', [1], 'action_archive')
 
-        # Check if the function executes successfully
-        assert result.get("status") == "Success", "Function execution should return 'Success'"
+        # Verify the result
+        assert result == {"status": "Success"}, "Function execution should return success status"
+
+    def test_client_cleanup(self):
+        """Test that the client is properly closed when the Odoo instance is destroyed"""
+        mock_client = MagicMock()
+
+        with patch('httpx.Client', return_value=mock_client):
+            odoo = Odoo('http://fake-url.com', 'db', 'user', 'pass')
+            del odoo
+
+        mock_client.close.assert_called_once()
