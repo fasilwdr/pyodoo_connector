@@ -285,9 +285,12 @@ class OdooModel:
 
 
 class OdooAPI:
-    def __init__(self, url: str, db: str, username: str, password: str, session_id: str = None):
+    def __init__(self, url: str, db: str = None, username: str = None, password: str = None, session_id: str = None):
         if not url:
             raise OdooValidationError("URL cannot be empty")
+        if not any([session_id, all([db, username, password])]):
+            raise OdooValidationError("Either session_id or (db, username, password) must be provided")
+
         self.url = url.rstrip('/')
         self.db = db
         self.username = username
@@ -446,10 +449,23 @@ class OdooAPI:
             raise OdooRequestError(f"Unexpected error: {str(e)}")
 
 
-def connect_odoo(url: str, db: str, username: str, password: str, session_id: str = None) -> tuple[
-    Optional[OdooAPI], Optional[str]]:
+def connect_odoo(url: str, db: str = None, username: str = None, password: str = None,
+                 session_id: str = None) -> tuple[Optional[OdooAPI], Optional[str]]:
+    """
+    Connect to Odoo using either credentials or session ID.
+
+    Args:
+        url: Odoo instance URL
+        db: Database name (optional if session_id is provided)
+        username: Username (optional if session_id is provided)
+        password: Password (optional if session_id is provided)
+        session_id: Existing session ID (optional if credentials are provided)
+
+    Returns:
+        tuple: (OdooAPI instance, session_id) or (None, None) if connection fails
+    """
     try:
-        api = OdooAPI(url, db, username, password, session_id)
+        api = OdooAPI(url=url, db=db, username=username, password=password, session_id=session_id)
         if api.connect():
             return api, api.session_id
         raise OdooAuthenticationError("Failed to connect to Odoo server")

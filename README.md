@@ -12,11 +12,12 @@ A powerful Python package for interacting with Odoo platforms via JSON-RPC. This
 - 🔍 Smart record browsing and caching
 - 📊 Efficient batch operations
 - 🌐 Context management
+- 🔑 Session ID based authentication (New in 0.1.6)
 
 ## Installation
 
 ```bash
-pip install pyodoo_connect
+pip install pyodoo_connect --upgrade
 ```
 
 ### Requirements
@@ -28,21 +29,30 @@ pip install pyodoo_connect
 
 ### Basic Connection
 
+You can connect to Odoo in two ways:
+
+#### 1. Using Credentials (Traditional)
 ```python
 from pyodoo_connect import connect_odoo
 
-# Connect to Odoo
+# Connect using credentials
 odoo, session_id = connect_odoo(
     url="https://your-odoo-instance.com",
     db="your_database",
     username="your_username",
     password="your_password"
 )
+```
 
-# Check connection
-if odoo:
-    print("Successfully connected!")
-    print(f"Session ID: {session_id}")
+#### 2. Using Session ID (New in 0.1.6)
+```python
+from pyodoo_connect import connect_odoo
+
+# Connect using existing session ID
+odoo, session_id = connect_odoo(
+    url="https://your-odoo-instance.com",
+    session_id="your_session_id"
+)
 ```
 
 ## Usage Examples
@@ -230,5 +240,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Name:** Fasil
 - **Email:** fasilwdr@hotmail.com
 - **WhatsApp:** [Contact](https://wa.me/966538952934)
-- **Facebook:** [Profile](https://www.facebook.com/fasilwdr)
-- **Instagram:** [Profile](https://www.instagram.com/fasilwdr)
