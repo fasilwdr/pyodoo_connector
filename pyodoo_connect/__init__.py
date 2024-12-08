@@ -8,6 +8,7 @@
 #############################################################################
 
 
-from .odoo import Odoo
-from .proxies import RecordProxy, ModelProxy
+from .odoo import connect_odoo
 from .tools import Command
+
+__version__ = "0.1.5"

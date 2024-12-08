@@ -1,138 +1,234 @@
-
 # PyOdoo Connector
 
-PyOdoo Connector is a Python package providing a convenient way to interact with Odoo platforms via JSON-RPC. It simplifies operations like logging in, executing commands, and managing records in an Odoo database.
+A powerful Python package for interacting with Odoo platforms via JSON-RPC. This library provides a seamless interface for performing CRUD operations, managing sessions, and executing custom methods on your Odoo instance.
 
 ## Features
 
-- **Session Management**: Handles login and session management automatically.
-- **CRUD Operations**: Easy-to-use functions for creating, reading, updating, and deleting records.
-- **Method Execution**: Supports calling custom methods defined in Odoo models.
-- **Error Handling**: Implements error handling for HTTP and URL request errors.
-- **Report Downloading**: Allows downloading reports from Odoo in PDF form.
+- 🔐 Secure session management and authentication
+- 📝 Complete CRUD operations support
+- 🔄 Automatic session renewal
+- 🎯 Custom method execution
+- 🛡️ Comprehensive error handling
+- 🔍 Smart record browsing and caching
+- 📊 Efficient batch operations
+- 🌐 Context management
 
 ## Installation
-
-Install Odoo Connector using pip:
 
 ```bash
 pip install pyodoo_connect
 ```
 
-### Prerequisites
+### Requirements
+- Python 3.6+
+- httpx>=0.24.0
+- Access to an Odoo instance with JSON-RPC enabled
 
-- Python 3.6 or higher.
-- Access to an Odoo instance with the JSON-RPC interface enabled.
+## Quick Start
 
-Ensure you have the necessary permissions to interact with the Odoo server as some operations might require administrative access.
+### Basic Connection
 
-## Configuration
-
-Before using this module, configure the connection parameters to match your Odoo instance settings:
-
-1. **URL**: The URL of your Odoo server.
-2. **Database**: The database name.
-3. **Username**: Your Odoo username.
-4. **Password**: Your Odoo password.
-
-## Usage
-
-Here is a simple example to show how you can use Odoo Connector to interact with an Odoo instance:
-### Initializing the Connection
 ```python
-from pyodoo_connect import Odoo
-odoo = Odoo('https://example-odoo.com/', 'your-db', 'your-username', 'your-password')
-```
-### Basic Operations
-- Get a Partner Record
-```python
-partner = odoo.env['res.partner'].browse(9)
-partner.name = 'New Partner Name'
+from pyodoo_connect import connect_odoo
+
+# Connect to Odoo
+odoo, session_id = connect_odoo(
+    url="https://your-odoo-instance.com",
+    db="your_database",
+    username="your_username",
+    password="your_password"
+)
+
+# Check connection
+if odoo:
+    print("Successfully connected!")
+    print(f"Session ID: {session_id}")
 ```
 
-- Execute a Method on a Record
+## Usage Examples
+
+### 1. Record Operations
+
+#### Create Records
 ```python
-partner.action_archive()
-partner.update({'mobile': '12345678'})
+# Create a single partner
+partner_id = odoo.env('res.partner').create({
+    'name': 'John Doe',
+    'email': 'john@example.com',
+    'phone': '+1234567890',
+    'is_company': True
+})
+
+# Create with related records
+from pyodoo_connect import Command
+
+sales_order = odoo.env('sale.order').create({
+    'partner_id': partner_id,
+    'order_line': [Command.create({
+        'product_id': 1,
+        'product_uom_qty': 2,
+        'price_unit': 100
+    })]
+})
 ```
-- Search for Records
+
+#### Read Records
 ```python
-partner_ids = odoo.env['res.partner'].search([('name', '=', 'Abigail Peterson')])
-print(partner_ids)
-#[50]
+# Browse a single record
+partner = odoo.env('res.partner').browse(partner_id)
+print(f"Partner Name: {partner.name}")
+print(f"Email: {partner.email}")
+
+# Search and read multiple records
+partners = odoo.env('res.partner').search_read(
+    domain=[('is_company', '=', True)],
+    fields=['name', 'email', 'phone'],
+    limit=5
+)
+for partner in partners:
+    print(f"Company: {partner['name']}")
 ```
-- Read Records
+
+#### Update Records
 ```python
-print(partner.name)
-records = odoo.env['res.partner'].read(ids=partner_ids, fields=['name', 'email'])
-print(records)
-#Wood Corner
-#[{'id': 50, 'name': 'Abigail Peterson', 'email': 'abigail.peterson39@example.com'}]
+# Update using write method
+odoo.env('res.partner').write([partner_id], {
+    'name': 'John Smith',
+    'email': 'john.smith@example.com'
+})
+
+# Update using record attribute
+partner = odoo.env('res.partner').browse(partner_id)
+partner.phone = '+9876543210'
 ```
-- Create a New Record
+
+#### Delete Records
 ```python
-new_partner_id = odoo.env['res.partner'].create({'name': 'New Partner', 'email': 'new@partner.com', 'is_company': True})
-print(new_partner_id)
-#100
+# Delete a single record
+odoo.env('res.partner').unlink([partner_id])
+
+# Delete multiple records
+partner_ids = odoo.env('res.partner').search([
+    ('name', 'like', 'Test%')
+])
+odoo.env('res.partner').unlink(partner_ids)
 ```
-- Update Records
-```python
-#These are the ways to update records
-partner.mobile = '+91 9746707744'
-partner.write({'mobile': '+91 9746707744'})
-odoo.env['res.partner'].write(ids=new_partner_id, values={'phone': '1234567890'})
-```
-- Update Relation fields (One2many or Many2many)
+
+### 2. Relational Fields Operations
+
+Using Command class for managing relations:
+
 ```python
 from pyodoo_connect import Command
-partner.category_id = [Command.set([5,6])]
-partner.write({'category_id': [Command.link([4,3])]})
-odoo.env['res.partner'].write(ids=new_partner_id, values={'category_id': [Command.create({'name': 'New Tag'})]})
-#All functions of Command can be used (create, update, delete, unlink, link, clear, set)
+
+# Link existing records
+partner.category_id = [Command.set([1, 2, 3])]  # Set specific tags
+
+# Create and link new record
+partner.child_ids = [
+    Command.create({
+        'name': 'Contact Person',
+        'email': 'contact@example.com'
+    })
+]
+
+# Update linked record
+partner.child_ids = [
+    Command.update(child_id, {
+        'name': 'New Name'
+    })
+]
+
+# Unlink records
+partner.category_id = [Command.unlink(tag_id)]
+
+# Clear all relations
+partner.category_id = [Command.clear()]
 ```
-- Delete Records
+
+### 3. Search Operations
+
 ```python
-odoo.env['res.partner'].unlink(ids=new_partner_id)
+# Basic search
+customer_ids = odoo.env('res.partner').search([
+    ('customer_rank', '>', 0),
+    ('is_company', '=', True)
+])
+
+# Search with additional parameters
+products = odoo.env('product.product').search_read(
+    domain=[('type', '=', 'product')],
+    fields=['name', 'list_price', 'qty_available'],
+    offset=0,
+    limit=10,
+    order='name ASC'
+)
 ```
-- Download a QWeb Report
+
+### 4. Context Management
+
 ```python
-odoo.download_report(report_name='sale.report_saleorder', record_ids=[52], file_name='Sales Report')
+# Set context for specific operations
+order = odoo.env('sale.order').browse(order_id)
+order.with_context(force_company=2).action_confirm()
+
+# Multiple context values
+result = order.with_context({
+    'lang': 'es_ES',
+    'tz': 'Europe/Madrid',
+    'force_company': 2
+}).action_invoice_create()
 ```
-- Version
+
+### 5. Custom Method Execution
+
 ```python
-print(odoo.version)
-#17.0
+# Execute custom methods on records
+sale_order = odoo.env('sale.order').browse(order_id)
+sale_order.action_confirm()  # Confirm sale order
+
+# Execute with parameters
+invoice = sale_order.with_context(default_type='out_invoice')._create_invoices()
 ```
-- With Context
+
+### 6. Error Handling
+
+The library provides specific exceptions for different error scenarios:
+
 ```python
-record_id = odoo.env['purchase.order'].browse(14)
-record_id.with_context({'send_rfq':True}).action_rfq_send()
-#or
-record_id.with_context(send_rfq=True).action_rfq_send()
-```
-- UID
-```python
-print(odoo.uid)
-#2
-```
-- User Context
-```python
-print(odoo.env.context)
-#{'lang': 'en_US', 'tz': 'Europe/Brussels', 'uid': 2}
-```
-- User Info
-```python
-print(odoo.env.user_info)
-#{'uid': 2, 'is_admin': True, 'name': 'Mitchell Admin', 'username': 'admin', 'partner_id': 3}
-```
-- Settings
-```python
-print(odoo.env.settings)
-#{'web_base_url': 'https://demo.odoo.com', 'localization': {'lang': 'en_US', 'tz': 'Europe/Brussels'}, 'company_details': {'current_company': 1, 'allowed_companies': {'2': {'id': 2, 'name': 'My Company (Chicago)', 'sequence': 10, 'child_ids': [], 'parent_id': False, 'timesheet_uom_id': 4, 'timesheet_uom_factor': 1.0}, '1': {'id': 1, 'name': 'My Company (San Francisco)', 'sequence': 0, 'child_ids': [], 'parent_id': False, 'timesheet_uom_id': 4, 'timesheet_uom_factor': 1.0}}, 'disallowed_ancestor_companies': {}}}
+from pyodoo_connect import (
+    OdooException,
+    OdooConnectionError,
+    OdooAuthenticationError,
+    OdooRequestError,
+    OdooValidationError
+)
+
+try:
+    odoo.env('res.partner').create({
+        'name': 'Test',
+        'email': 'invalid_email'  # This will raise a validation error
+    })
+except OdooValidationError as e:
+    print(f"Validation Error: {str(e)}")
+except OdooConnectionError as e:
+    print(f"Connection Error: {str(e)}")
+except OdooException as e:
+    print(f"General Odoo Error: {str(e)}")
 ```
 
 ## Contributing
-Contributions are welcome! Please feel free to submit pull requests, report bugs, or suggest features.
+
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
 
 ## License
-This project is licensed under the MIT License - see the LICENSE file for details.
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Author
+
+- **Name:** Fasil
+- **Email:** fasilwdr@hotmail.com
+- **WhatsApp:** [Contact](https://wa.me/966538952934)
+- **Facebook:** [Profile](https://www.facebook.com/fasilwdr)
+- **Instagram:** [Profile](https://www.instagram.com/fasilwdr)
