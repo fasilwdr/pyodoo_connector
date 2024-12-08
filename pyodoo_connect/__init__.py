@@ -11,4 +11,4 @@
 from .odoo import connect_odoo
 from .tools import Command
 
-__version__ = "0.1.5"
+__version__ = "0.1.6"
