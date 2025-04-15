@@ -8,7 +8,7 @@
 #############################################################################
 
 
-from .odoo import connect_odoo
+from .odoo import connect_odoo, connect_model
 from .tools import Command
 
-__version__ = "0.1.6"
+__version__ = "0.2.0"
