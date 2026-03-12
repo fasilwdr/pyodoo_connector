@@ -166,6 +166,17 @@ class TestOdooSession:
         with pytest.raises(OdooValidationError):
             OdooSession(url="", db="db", username="user", password="pass")
 
+    def test_construct_with_existing_session_id(self):
+        with patch("httpx.Client") as MockClient:
+            mock_client = MockClient.return_value
+            session = OdooSession(url=BASE_URL, session_id=SESSION_COOKIE)
+            assert session.session_id == SESSION_COOKIE
+            mock_client.post.assert_not_called()
+
+    def test_session_id_or_credentials_required(self):
+        with pytest.raises(OdooValidationError):
+            OdooSession(url=BASE_URL)
+
     def test_env_returns_model(self):
         auth_response = _json_response({"jsonrpc": "2.0", "result": {"uid": 1}})
         auth_response.cookies = {"session_id": SESSION_COOKIE}
@@ -180,6 +191,24 @@ class TestOdooSession:
             model = session.env("res.partner")
             assert isinstance(model, OdooModel)
             assert model._model == "res.partner"
+
+    def test_getitem_returns_model(self):
+        with patch("httpx.Client") as MockClient:
+            session = OdooSession(url=BASE_URL, session_id=SESSION_COOKIE)
+            model = session["res.partner"]
+            assert isinstance(model, OdooModel)
+            assert model._model == "res.partner"
+
+    def test_env_uses_default_context(self):
+        with patch("httpx.Client"):
+            session = OdooSession(
+                url=BASE_URL,
+                session_id=SESSION_COOKIE,
+                context={"lang": "ar_001", "tz": "Asia/Riyadh"},
+            )
+            model = session["res.partner"]
+            assert model._context["lang"] == "ar_001"
+            assert model._context["tz"] == "Asia/Riyadh"
 
     def test_env_empty_model_raises(self):
         auth_response = _json_response({"jsonrpc": "2.0", "result": {"uid": 1}})
@@ -355,6 +384,27 @@ class TestOdooModel:
         new_model = model.with_context(lang="de_DE")
         assert new_model._context["lang"] == "de_DE"
 
+    def test_with_user(self):
+        model, _ = self._model()
+        new_model = model.with_user(7)
+        assert new_model._context["uid"] == 7
+
+    def test_with_user_requires_value(self):
+        model, _ = self._model()
+        with pytest.raises(OdooValidationError):
+            model.with_user(0)
+
+    def test_sudo(self):
+        model, _ = self._model()
+        sudo_model = model.sudo()
+        assert sudo_model._context["sudo"] is True
+
+    def test_sudo_with_user(self):
+        model, _ = self._model()
+        sudo_model = model.sudo(5)
+        assert sudo_model._context["sudo"] is True
+        assert sudo_model._context["uid"] == 5
+
     # --- dynamic methods ---
 
     def test_dynamic_method(self):
@@ -460,6 +510,22 @@ class TestOdooRecord:
         record, _ = self._record()
         new_record = record.with_context({"active_test": False})
         assert new_record._context["active_test"] is False
+
+    def test_with_user(self):
+        record, _ = self._record()
+        new_record = record.with_user(11)
+        assert new_record._context["uid"] == 11
+
+    def test_sudo(self):
+        record, _ = self._record()
+        sudo_record = record.sudo()
+        assert sudo_record._context["sudo"] is True
+
+    def test_sudo_with_user(self):
+        record, _ = self._record()
+        sudo_record = record.sudo(3)
+        assert sudo_record._context["sudo"] is True
+        assert sudo_record._context["uid"] == 3
 
     # --- dynamic methods ---
 

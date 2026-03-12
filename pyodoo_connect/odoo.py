@@ -76,6 +76,19 @@ class OdooRecord:
         return OdooRecord(self._session_id, self._url, self._model, self._id,
                           context, self._client)
 
+    def with_user(self, user_id: int) -> 'OdooRecord':
+        """Return a new record with a user override in context"""
+        if not user_id:
+            raise OdooValidationError("User ID must be provided")
+        return self.with_context(uid=user_id)
+
+    def sudo(self, user_id: Optional[int] = None) -> 'OdooRecord':
+        """Return a record with sudo context enabled"""
+        record = self.with_context(sudo=True)
+        if user_id is not None:
+            record = record.with_user(user_id)
+        return record
+
     def __getattr__(self, name):
         """Handle dynamic method calls to Odoo"""
 
@@ -170,6 +183,19 @@ class OdooModel:
         context.update(kwargs)
 
         return OdooModel(self._session_id, self._url, self._model, context, self._client)
+
+    def with_user(self, user_id: int) -> 'OdooModel':
+        """Return a new model with a user override in context"""
+        if not user_id:
+            raise OdooValidationError("User ID must be provided")
+        return self.with_context(uid=user_id)
+
+    def sudo(self, user_id: Optional[int] = None) -> 'OdooModel':
+        """Return a model with sudo context enabled"""
+        model = self.with_context(sudo=True)
+        if user_id is not None:
+            model = model.with_user(user_id)
+        return model
 
     def _make_request(self, method: str, args: list = None, kwargs: dict = None) -> Any:
         """Make a request to the Odoo server"""
@@ -377,29 +403,42 @@ class OdooSession:
         partner.write({"phone": "+1234567890"})
     """
 
-    def __init__(self, url: str, db: str, username: str, password: str):
+    def __init__(self, url: str, db: str = None, username: str = None,
+                 password: str = None, session_id: str = None,
+                 context: dict = None):
         """
-        Authenticate against Odoo and open a persistent HTTP session.
+        Create an Odoo session and open a persistent HTTP session.
 
         Args:
             url: Odoo instance URL
-            db: Database name
-            username: Username
-            password: Password
+            db: Database name (required if session_id is not provided)
+            username: Username (required if session_id is not provided)
+            password: Password (required if session_id is not provided)
+            session_id: Existing Odoo session ID to reuse without authentication
+            context: Default context passed to models created from this session
 
         Raises:
             OdooValidationError: If any parameter is missing
             OdooAuthenticationError: If credentials are invalid
             OdooConnectionError: If the server cannot be reached
         """
-        if not url or not db or not username or not password:
-            raise OdooValidationError("All connection parameters must be provided")
+        if not url:
+            raise OdooValidationError("URL must be provided")
 
         self._url = url.rstrip('/')
         self._db = db
         self._username = username
         self._client = httpx.Client(verify=False)
-        self._session_id: str = self._authenticate(password)
+        self._default_context = context or {"lang": "en_US", "tz": "UTC"}
+
+        if session_id:
+            self._session_id = session_id
+        else:
+            if not db or not username or not password:
+                raise OdooValidationError(
+                    "Provide session_id or provide db, username and password"
+                )
+            self._session_id = self._authenticate(password)
 
     def __repr__(self) -> str:
         return f"OdooSession(url={self._url!r}, db={self._db!r}, user={self._username!r})"
@@ -448,6 +487,10 @@ class OdooSession:
         """The active session ID."""
         return self._session_id
 
+    def __getitem__(self, model: str) -> OdooModel:
+        """Allow Odoo-style access: session['res.partner']"""
+        return self.env(model)
+
     def env(self, model: str, context: dict = None) -> OdooModel:
         """
         Return an OdooModel for the given model name.
@@ -461,7 +504,10 @@ class OdooSession:
         """
         if not model:
             raise OdooValidationError("Model name must be provided")
-        return OdooModel(self._session_id, self._url, model, context, self._client)
+        model_context = self._default_context.copy()
+        if context:
+            model_context.update(context)
+        return OdooModel(self._session_id, self._url, model, model_context, self._client)
 
 
 def connect_odoo(url: str, db: str, username: str, password: str) -> str:

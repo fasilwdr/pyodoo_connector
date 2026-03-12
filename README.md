@@ -41,8 +41,26 @@ session = OdooSession(
     password="your_password",
 )
 
-# Access any model
-partner_model = session.env("res.partner")
+# Access any model (Odoo-style syntax supported)
+partner_model = session["res.partner"]  # equivalent to session.env("res.partner")
+partners_admin = partner_model.sudo()
+partners_for_user_5 = partner_model.with_user(5)
+partners_ar = partner_model.with_context(lang="ar_001")
+```
+
+If you already have a session ID:
+
+```python
+from pyodoo_connect import connect_odoo, OdooSession
+
+session_id = connect_odoo(
+    url="https://your-odoo-instance.com",
+    db="your_database",
+    username="your_username",
+    ******,
+)
+session = OdooSession(url="https://your-odoo-instance.com", session_id=session_id)
+partner_model = session["res.partner"]
 ```
 
 ### Legacy: separate connect functions
