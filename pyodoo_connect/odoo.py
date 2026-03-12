@@ -491,6 +491,10 @@ class OdooSession:
         """Allow Odoo-style access: session['res.partner']"""
         return self.env(model)
 
+    def __call__(self, model: str) -> OdooModel:
+        """Allow call-style access: session('res.partner')"""
+        return self.env(model)
+
     def env(self, model: str, context: dict = None) -> OdooModel:
         """
         Return an OdooModel for the given model name.

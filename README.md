@@ -43,6 +43,7 @@ session = OdooSession(
 
 # Access any model (Odoo-style syntax supported)
 partner_model = session["res.partner"]  # equivalent to session.env("res.partner")
+partner_model_alt = session("res.partner")  # callable alias
 partners_admin = partner_model.sudo()
 partners_for_user_5 = partner_model.with_user(5)
 partners_ar = partner_model.with_context(lang="ar_001")

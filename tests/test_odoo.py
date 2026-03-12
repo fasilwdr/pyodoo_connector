@@ -199,6 +199,13 @@ class TestOdooSession:
             assert isinstance(model, OdooModel)
             assert model._model == "res.partner"
 
+    def test_call_returns_model(self):
+        with patch("httpx.Client"):
+            session = OdooSession(url=BASE_URL, session_id=SESSION_COOKIE)
+            model = session("res.partner")
+            assert isinstance(model, OdooModel)
+            assert model._model == "res.partner"
+
     def test_env_uses_default_context(self):
         with patch("httpx.Client"):
             session = OdooSession(
