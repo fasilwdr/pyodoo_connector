@@ -10,5 +10,6 @@
 
 from .odoo import connect_odoo, connect_model
 from .tools import Command
+from .http import connect_http
 
 __version__ = "0.2.0"
