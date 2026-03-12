@@ -78,7 +78,7 @@ class OdooRecord:
 
     def with_user(self, user_id: int) -> 'OdooRecord':
         """Return a new record with a user override in context"""
-        if not user_id:
+        if user_id is None:
             raise OdooValidationError("User ID must be provided")
         return self.with_context(uid=user_id)
 
@@ -186,7 +186,7 @@ class OdooModel:
 
     def with_user(self, user_id: int) -> 'OdooModel':
         """Return a new model with a user override in context"""
-        if not user_id:
+        if user_id is None:
             raise OdooValidationError("User ID must be provided")
         return self.with_context(uid=user_id)
 

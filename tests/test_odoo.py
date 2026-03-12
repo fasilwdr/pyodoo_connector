@@ -389,10 +389,15 @@ class TestOdooModel:
         new_model = model.with_user(7)
         assert new_model._context["uid"] == 7
 
+    def test_with_user_allows_zero(self):
+        model, _ = self._model()
+        new_model = model.with_user(0)
+        assert new_model._context["uid"] == 0
+
     def test_with_user_requires_value(self):
         model, _ = self._model()
         with pytest.raises(OdooValidationError):
-            model.with_user(0)
+            model.with_user(None)
 
     def test_sudo(self):
         model, _ = self._model()
@@ -515,6 +520,11 @@ class TestOdooRecord:
         record, _ = self._record()
         new_record = record.with_user(11)
         assert new_record._context["uid"] == 11
+
+    def test_with_user_allows_zero(self):
+        record, _ = self._record()
+        new_record = record.with_user(0)
+        assert new_record._context["uid"] == 0
 
     def test_sudo(self):
         record, _ = self._record()

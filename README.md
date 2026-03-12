@@ -57,7 +57,7 @@ session_id = connect_odoo(
     url="https://your-odoo-instance.com",
     db="your_database",
     username="your_username",
-    ******,
+    password="your_password",
 )
 session = OdooSession(url="https://your-odoo-instance.com", session_id=session_id)
 partner_model = session["res.partner"]
