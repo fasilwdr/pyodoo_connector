@@ -17,7 +17,7 @@ class OdooHttpClient:
         """
         self._url = url.rstrip('/')
         self._session_id = session_id
-        self._client = httpx.Client(verify=False)
+        self._client = httpx.Client()
 
     def __del__(self):
         try:
