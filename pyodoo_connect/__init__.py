@@ -8,7 +8,19 @@
 #############################################################################
 
 
-from .odoo import connect_odoo, connect_model
+from .odoo import (
+    connect_odoo,
+    connect_model,
+    OdooSession,
+    OdooModel,
+    OdooRecord,
+    OdooException,
+    OdooConnectionError,
+    OdooAuthenticationError,
+    OdooRequestError,
+    OdooValidationError,
+)
 from .tools import Command
+from .http import connect_http
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

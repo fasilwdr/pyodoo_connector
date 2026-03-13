@@ -1,15 +1,21 @@
-# PyOdoo Connector
+# PyOdoo Connect
 
-A powerful Python package for interacting with Odoo platforms via JSON-RPC. This library provides a seamless interface for performing operations and executing custom methods on your Odoo instance.
+A powerful Python package for interacting with Odoo platforms via JSON-RPC.
+This library provides a seamless, **Odoo-style** interface for performing
+CRUD operations, calling model methods, and managing context — all from
+outside an Odoo environment.
 
 ## Features
 
 - 🔐 Simple session-based authentication
-- 📝 Direct access to all Odoo methods
-- 🎯 Clean and intuitive API design
-- 🔍 Easy record browsing
-- 📊 Support for Odoo's standard context-based behavior
-- 🛡️ Comprehensive error handling
+- 🌐 `OdooSession` — mirrors `self.env` in Odoo
+- 📝 Direct access to all Odoo model methods
+- 🔍 `search`, `search_read`, `search_count`, `read`, `browse`
+- ✏️ `create`, `write`, `unlink`
+- 🧩 `sudo()`, `with_user()`, `with_context()` for API compatibility
+- 📦 Lazy field loading with local caching on `OdooRecord`
+- 🛡️ Comprehensive error handling with typed exceptions
+- 🔗 Shared `httpx` client for efficient connection reuse
 - 🚀 Lightweight and fast
 
 ## Installation
@@ -19,106 +25,237 @@ pip install pyodoo_connect --upgrade
 ```
 
 ### Requirements
-- Python 3.6+
-- httpx>=0.24.0
+- Python 3.8+
+- `httpx >= 0.24.0`
 - Access to an Odoo instance with JSON-RPC enabled
+
+---
 
 ## Quick Start
 
-### Connect to Odoo
+### 1. Authenticate
 
 ```python
-from pyodoo_connect import connect_odoo
+from pyodoo_connect import connect_odoo, OdooSession
 
-# Get session ID from Odoo
 session_id = connect_odoo(
     url="https://your-odoo-instance.com",
     db="your_database",
     username="your_username",
-    password="your_password"
+    password="your_password",
 )
 ```
 
-### Connect to a Model
+### 2. Create a session environment
 
 ```python
-from pyodoo_connect import connect_model
-
-# Connect to a specific model
-partner_model = connect_model(
-    session_id=session_id,
-    url="https://your-odoo-instance.com",
-    model="res.partner"
-)
+env = OdooSession(url="https://your-odoo-instance.com", session_id=session_id)
 ```
+
+### 3. Access models (like `self.env` in Odoo)
+
+```python
+Partner = env('res.partner')
+# or equivalently:
+Partner = env['res.partner']
+```
+
+---
 
 ## Usage Examples
 
-### Create Records
+### Search for records
 
 ```python
-# Create a single partner
-vals = {'name': 'John Doe', 'email': 'john@example.com'}
-partner = partner_model.create(vals)
+# Returns a list of OdooRecord objects
+partners = Partner.search([('is_company', '=', True)], limit=10)
 
-# Use the returned record object directly
-partner.write({'phone': '+1234567890'})
+for partner in partners:
+    print(partner.name)   # field values are fetched lazily and cached
+    print(partner.email)
 ```
 
-### Call Any Odoo Method
+### Search and read (returns dicts)
 
 ```python
-# Call methods directly on records
-partner.any_function()
-
-# Use the with_context method to change context
-translated_partner = partner.with_context(lang='es_ES')
-spanish_name = translated_partner.read('name')
-
-# Call methods with arguments
-partner.message_post(body="Hello world!")
-
-# Call methods with keyword arguments
-partner.message_post(body="Hello", message_type="comment")
-
-# Call methods with dictionary context
-partner.with_context({"active_test": False}).unlink()
+results = Partner.search_read(
+    domain=[('customer_rank', '>', 0)],
+    fields=['name', 'email', 'phone'],
+    limit=5,
+    order='name ASC',
+)
+for row in results:
+    print(row['name'], row['email'])
 ```
 
-### Working with Model Methods
+### Count records
 
 ```python
-# Search for records
-partners = partner_model.search([('is_company', '=', True)])
-
-# Browse existing records
-company = partner_model.browse(1)
-
-# Call custom model methods
-count = partner_model.search_count([])
+count = Partner.search_count([('is_company', '=', True)])
+print(count)
 ```
 
-### Using Command for Relational Fields
+### Create a record
+
+```python
+new_partner = Partner.create({'name': 'ACME Corp', 'is_company': True})
+print(new_partner.id)     # integer database ID
+print(new_partner)        # res.partner(42,)
+```
+
+### Write (update)
+
+```python
+# On a record instance
+new_partner.write({'phone': '+1 800 555 0100'})
+
+# On the model (multiple IDs at once)
+Partner.write([1, 2, 3], {'active': False})
+```
+
+### Unlink (delete)
+
+```python
+# On a record instance
+new_partner.unlink()
+
+# On the model
+Partner.unlink([4, 5, 6])
+```
+
+### Browse by ID
+
+```python
+partner = Partner.browse(1)          # single OdooRecord
+partners = Partner.browse([1, 2, 3]) # list of OdooRecord
+```
+
+### Read raw data
+
+```python
+data = Partner.read([1, 2], fields=['name', 'email'])
+# [{'id': 1, 'name': '...', 'email': '...'}, ...]
+```
+
+### Call arbitrary Odoo methods on records
+
+```python
+order = env('sale.order').browse(10)
+order.action_confirm()                        # no extra args
+order.message_post(body="Confirmed by bot!")  # keyword args
+```
+
+### Environment variables (`env.user`, `env.company`, …)
+
+These mirror the properties available on `self.env` in Odoo and are fetched
+lazily from the server on first access (result is cached for the session
+lifetime).
+
+```python
+# Current user ID (integer)
+print(env.uid)               # e.g. 2
+
+# Current user as an OdooRecord (res.users)
+user = env.user
+print(user.name)             # 'Administrator'
+
+# Current company as an OdooRecord (res.company)
+company = env.company
+print(company.name)          # 'My Company'
+
+# All allowed companies (list of OdooRecord)
+for comp in env.companies:
+    print(comp.id, comp.name)
+
+# Active language code (from context)
+print(env.lang)              # 'en_US'
+
+# Full context dict (copy)
+print(env.context)           # {'lang': 'en_US', 'tz': 'UTC'}
+```
+
+### Context management
+
+```python
+# Session level
+env_fr = env.with_context(lang='fr_FR')
+Partner_fr = env_fr('res.partner')
+
+# Model level
+Partner_es = Partner.with_context({'lang': 'es_ES'})
+
+# Record level
+translated = new_partner.with_context(lang='de_DE')
+print(translated.name)
+```
+
+### `sudo()` and `with_user()` (API compatibility)
+
+```python
+# These methods return a new proxy and are provided so that
+# code written for Odoo's internal API can run outside Odoo unchanged.
+# Note: external JSON-RPC sessions run as the authenticated user;
+# privilege escalation is not enforced server-side.
+admin_partner = Partner.sudo()
+user_partner = Partner.with_user(3)
+```
+
+### Refresh cached field values
+
+```python
+partner = Partner.browse(1)
+print(partner.name)   # fetches from Odoo, caches locally
+partner.write({'name': 'New Name'})
+partner.refresh()     # clear cache
+print(partner.name)   # fetches fresh value
+```
+
+---
+
+## Using Command for relational fields
 
 ```python
 from pyodoo_connect import Command
 
-# Creating a sales order with order lines
-order = order_model.create({
+order = env('sale.order').create({
     'partner_id': 1,
     'order_line': [
         Command.create({
             'product_id': 1,
             'product_uom_qty': 2,
-            'price_unit': 100
+            'price_unit': 100.0,
         })
+    ],
+})
+
+# Link / unlink tags
+partner = Partner.browse(1)
+partner.write({
+    'category_id': [
+        Command.link(5),      # link existing tag id=5
+        Command.create({'name': 'VIP'}),
+        Command.clear(),      # remove all existing
     ]
 })
 ```
 
-## Error Handling
+---
 
-The library provides specific exceptions for different error scenarios:
+## Legacy API (still supported)
+
+```python
+from pyodoo_connect import connect_model
+
+Partner = connect_model(
+    session_id=session_id,
+    url="https://your-odoo-instance.com",
+    model="res.partner",
+)
+```
+
+---
+
+## Error Handling
 
 ```python
 from pyodoo_connect import (
@@ -126,35 +263,62 @@ from pyodoo_connect import (
     OdooConnectionError,
     OdooAuthenticationError,
     OdooRequestError,
-    OdooValidationError
+    OdooValidationError,
 )
 
 try:
-    partner = partner_model.create({'name': 'Test', 'email': 'invalid_email'})
+    partner = Partner.create({'name': 'Test'})
 except OdooValidationError as e:
-    print(f"Validation Error: {str(e)}")
+    print(f"Validation Error: {e}")
+except OdooAuthenticationError as e:
+    print(f"Auth Error: {e}")
 except OdooConnectionError as e:
-    print(f"Connection Error: {str(e)}")
+    print(f"Connection Error: {e}")
+except OdooRequestError as e:
+    print(f"Request Error: {e}")
+    print(f"Server response: {e.response}")
 except OdooException as e:
-    print(f"General Odoo Error: {str(e)}")
+    print(f"General Odoo Error: {e}")
 ```
 
-## What's New in Version 0.2.0
+---
 
-- Completely redesigned API with simplified session handling
-- Direct access to all Odoo model methods with proper return types
-- Automatic passing of record IDs for method calls
-- Enhanced context management with both dictionary and keyword argument support
-- Improved error handling with specific exception types
-- Streamlined record creation and management
+## What's New in Version 0.3.0
+
+- **`OdooSession`** — Odoo-style `env` gateway; supports `env('model')` and
+  `env['model']` syntax
+- **Environment variables** — `env.uid`, `env.user`, `env.company`,
+  `env.companies`, `env.lang`, `env.context`; fetched lazily from
+  `/web/session/get_session_info` and cached for the session lifetime
+- **Explicit model methods** — `search`, `search_read`, `search_count`,
+  `read`, `write`, `unlink`, `browse`, `create` with typed signatures
+- **Lazy field access on `OdooRecord`** — `partner.name` transparently
+  fetches field values and caches them; first field access per record
+  populates all returned fields in the cache
+- **Dual field/method proxy (`_FieldProxy`)** — unknown attributes on a
+  record can be used as field values *or* called as Odoo methods
+- **`sudo()`, `with_user()`, `with_context()`** on both models and records
+- **`OdooRecord.id`** property, `__repr__`, `__bool__`, `__eq__`, `__hash__`
+- **Shared `httpx.Client`** — all models/records from a session reuse a
+  single HTTP connection pool
+- **All exceptions exported** from the top-level package
+- **`Command` parameter rename** — `id` → `record_id` in `update`, `delete`,
+  `unlink`, `link`
+- **Python ≥ 3.8** minimum; updated classifiers
+- **Comprehensive mock-based unit test suite**
+
+---
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+Contributions are welcome! Please feel free to submit a Pull Request. For
+major changes, please open an issue first to discuss what you would like to
+change.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License — see the [LICENSE](LICENSE)
+file for details.
 
 ## Author
 

@@ -36,16 +36,16 @@ class Command:
         return (CREATE, 0, values)
 
     @classmethod
-    def update(cls, id: int, values: dict):
+    def update(cls, record_id: int, values: dict):
         """
         Write ``values`` on the related record.
 
-        Return the command triple :samp:`(UPDATE, {id}, {values})`
+        Return the command triple :samp:`(UPDATE, {record_id}, {values})`
         """
-        return (UPDATE, id, values)
+        return (UPDATE, record_id, values)
 
     @classmethod
-    def delete(cls, id: int):
+    def delete(cls, record_id: int):
         """
         Remove the related record from the database and remove its relation
         with ``self``.
@@ -54,12 +54,12 @@ class Command:
         record from the database may be prevented if it is still linked to
         other records.
 
-        Return the command triple :samp:`(DELETE, {id}, 0)`
+        Return the command triple :samp:`(DELETE, {record_id}, 0)`
         """
-        return (DELETE, id, 0)
+        return (DELETE, record_id, 0)
 
     @classmethod
-    def unlink(cls, id: int):
+    def unlink(cls, record_id: int):
         """
         Remove the relation between ``self`` and the related record.
 
@@ -68,18 +68,18 @@ class Command:
         ``ondelete='cascade'``. Otherwise, the value of the inverse field is
         set to False and the record is kept.
 
-        Return the command triple :samp:`(UNLINK, {id}, 0)`
+        Return the command triple :samp:`(UNLINK, {record_id}, 0)`
         """
-        return (UNLINK, id, 0)
+        return (UNLINK, record_id, 0)
 
     @classmethod
-    def link(cls, id: int):
+    def link(cls, record_id: int):
         """
         Add a relation between ``self`` and the related record.
 
-        Return the command triple :samp:`(LINK, {id}, 0)`
+        Return the command triple :samp:`(LINK, {record_id}, 0)`
         """
-        return (LINK, id, 0)
+        return (LINK, record_id, 0)
 
     @classmethod
     def clear(cls):
