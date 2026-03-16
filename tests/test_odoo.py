@@ -19,6 +19,7 @@ from pyodoo_connect import (
     OdooSession,
     OdooModel,
     OdooRecord,
+    OdooRecordset,
     Command,
     OdooException,
     OdooConnectionError,
@@ -255,9 +256,10 @@ class TestOdooSession:
 
 class TestOdooModelSearch:
 
-    def test_search_returns_list_of_records(self, mock_http_client, partner_model):
+    def test_search_returns_recordset(self, mock_http_client, partner_model):
         mock_http_client.post.return_value = _mock_response(result=[1, 2, 3])
         records = partner_model.search([("is_company", "=", True)])
+        assert isinstance(records, OdooRecordset)
         assert len(records) == 3
         assert all(isinstance(r, OdooRecord) for r in records)
 
@@ -270,12 +272,15 @@ class TestOdooModelSearch:
     def test_search_empty_result(self, mock_http_client, partner_model):
         mock_http_client.post.return_value = _mock_response(result=[])
         records = partner_model.search([("name", "=", "Nobody")])
-        assert records == []
+        assert isinstance(records, OdooRecordset)
+        assert bool(records) is False
+        assert len(records) == 0
 
     def test_search_false_result(self, mock_http_client, partner_model):
         mock_http_client.post.return_value = _mock_response(result=False)
         records = partner_model.search([])
-        assert records == []
+        assert isinstance(records, OdooRecordset)
+        assert bool(records) is False
 
     def test_search_with_limit(self, mock_http_client, partner_model):
         mock_http_client.post.return_value = _mock_response(result=[1, 2])
@@ -301,29 +306,30 @@ class TestOdooModelSearch:
         payload = mock_http_client.post.call_args[1]["json"]
         assert "limit" not in payload["params"]["kwargs"]
 
-    def test_search_limit_1_returns_single_record(self, mock_http_client, partner_model):
+    def test_search_limit_1_returns_recordset(self, mock_http_client, partner_model):
         mock_http_client.post.return_value = _mock_response(result=[5])
         record = partner_model.search([("name", "=", "John")], limit=1)
-        assert isinstance(record, OdooRecord)
-        assert record.id == 5
+        assert isinstance(record, OdooRecordset)
+        assert len(record) == 1
         assert bool(record) is True
+        assert record.ids == [5]
 
-    def test_search_limit_1_empty_result_returns_falsy_record(self, mock_http_client, partner_model):
+    def test_search_limit_1_empty_result_returns_falsy_recordset(self, mock_http_client, partner_model):
         mock_http_client.post.return_value = _mock_response(result=[])
         record = partner_model.search([("name", "=", "Nobody")], limit=1)
-        assert isinstance(record, OdooRecord)
+        assert isinstance(record, OdooRecordset)
         assert bool(record) is False
 
-    def test_search_limit_1_false_result_returns_falsy_record(self, mock_http_client, partner_model):
+    def test_search_limit_1_false_result_returns_falsy_recordset(self, mock_http_client, partner_model):
         mock_http_client.post.return_value = _mock_response(result=False)
         record = partner_model.search([("name", "=", "Nobody")], limit=1)
-        assert isinstance(record, OdooRecord)
+        assert isinstance(record, OdooRecordset)
         assert bool(record) is False
 
-    def test_search_limit_gt_1_still_returns_list(self, mock_http_client, partner_model):
+    def test_search_limit_gt_1_returns_recordset(self, mock_http_client, partner_model):
         mock_http_client.post.return_value = _mock_response(result=[1, 2])
         records = partner_model.search([], limit=2)
-        assert isinstance(records, list)
+        assert isinstance(records, OdooRecordset)
         assert len(records) == 2
 
 
@@ -461,18 +467,91 @@ class TestOdooModelRead:
 class TestOdooModelBrowse:
 
     def test_browse_single_int(self, partner_model):
-        record = partner_model.browse(7)
-        assert isinstance(record, OdooRecord)
-        assert record.id == 7
+        recordset = partner_model.browse(7)
+        assert isinstance(recordset, OdooRecordset)
+        assert len(recordset) == 1
+        assert recordset.ids == [7]
 
     def test_browse_list(self, partner_model):
         records = partner_model.browse([1, 2, 3])
+        assert isinstance(records, OdooRecordset)
         assert len(records) == 3
         assert [r.id for r in records] == [1, 2, 3]
 
     def test_browse_shares_client(self, session, partner_model):
-        record = partner_model.browse(1)
-        assert record._client is session._client
+        recordset = partner_model.browse(1)
+        assert recordset[0]._client is session._client
+
+
+# ===========================================================================
+# OdooRecordset
+# ===========================================================================
+
+class TestOdooRecordset:
+
+    def test_ids_property(self, partner_model):
+        rs = partner_model.browse([1, 2, 3])
+        assert rs.ids == [1, 2, 3]
+
+    def test_len(self, partner_model):
+        rs = partner_model.browse([10, 20])
+        assert len(rs) == 2
+
+    def test_bool_truthy(self, partner_model):
+        rs = partner_model.browse([1])
+        assert bool(rs) is True
+
+    def test_bool_falsy_empty(self, partner_model):
+        rs = OdooRecordset([], 'res.partner')
+        assert bool(rs) is False
+
+    def test_iteration(self, partner_model):
+        rs = partner_model.browse([1, 2])
+        ids = [r.id for r in rs]
+        assert ids == [1, 2]
+
+    def test_indexing(self, partner_model):
+        rs = partner_model.browse([5, 6, 7])
+        assert rs[1].id == 6
+
+    def test_repr(self, partner_model):
+        rs = partner_model.browse([3, 4])
+        assert repr(rs) == "res.partner(3, 4)"
+
+    def test_repr_single(self, partner_model):
+        rs = partner_model.browse([5])
+        assert repr(rs) == "res.partner(5,)"
+
+    def test_repr_empty(self):
+        rs = OdooRecordset([], 'res.partner')
+        assert repr(rs) == "res.partner()"
+
+    def test_single_record_field_delegation(self, mock_http_client, partner_model):
+        mock_http_client.post.return_value = _mock_response(result=[5])
+        rs = partner_model.search([("name", "=", "John")], limit=1)
+        # field access should be delegated to the single OdooRecord
+        mock_http_client.post.return_value = _mock_response(result=[{"id": 5, "name": "John"}])
+        assert rs[0].id == 5
+
+    def test_multi_record_attr_raises(self, partner_model):
+        rs = partner_model.browse([1, 2])
+        with pytest.raises(AttributeError):
+            _ = rs.name
+
+    def test_empty_recordset_attr_raises(self):
+        rs = OdooRecordset([], 'res.partner')
+        with pytest.raises(AttributeError):
+            _ = rs.name
+
+    def test_equality(self, partner_model):
+        rs1 = partner_model.browse([1, 2])
+        rs2 = partner_model.browse([1, 2])
+        assert rs1 == rs2
+
+    def test_inequality_different_ids(self, partner_model):
+        rs1 = partner_model.browse([1, 2])
+        rs2 = partner_model.browse([1, 3])
+        assert rs1 != rs2
 
 
 # ===========================================================================

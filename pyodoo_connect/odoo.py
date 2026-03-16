@@ -346,6 +346,83 @@ class OdooRecord:
 
 
 # ---------------------------------------------------------------------------
+# OdooRecordset
+# ---------------------------------------------------------------------------
+
+class OdooRecordset:
+    """
+    An ordered, iterable collection of :class:`OdooRecord` objects of the
+    same model — mirroring the Odoo ORM *Recordset* type.
+
+    Typical usage::
+
+        partners = env('res.partner').search([('is_company', '=', True)])
+        for partner in partners:
+            print(partner.name)
+
+        partner = env('res.partner').search([('name', '=', 'John')], limit=1)
+        if partner:                # falsy when empty
+            print(partner.name)   # field access on single-record set
+
+        partners = env('res.partner').browse([1, 2, 3])
+        print(partners.ids)       # [1, 2, 3]
+    """
+
+    def __init__(self, records: List['OdooRecord'], model: str):
+        self._records: List[OdooRecord] = list(records)
+        self._model: str = model
+
+    # ------------------------------------------------------------------
+    # Identity / dunder
+    # ------------------------------------------------------------------
+
+    @property
+    def ids(self) -> List[int]:
+        """List of database IDs contained in this recordset."""
+        return [r.id for r in self._records]
+
+    def __len__(self) -> int:
+        return len(self._records)
+
+    def __bool__(self) -> bool:
+        return bool(self._records)
+
+    def __iter__(self):
+        return iter(self._records)
+
+    def __getitem__(self, key):
+        return self._records[key]
+
+    def __repr__(self) -> str:
+        return f"{self._model}{tuple(r.id for r in self._records)}"
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, OdooRecordset):
+            return self._model == other._model and self.ids == other.ids
+        return NotImplemented
+
+    def __hash__(self):
+        return hash((self._model, tuple(self.ids)))
+
+    # ------------------------------------------------------------------
+    # Single-record field / method delegation
+    # ------------------------------------------------------------------
+
+    def __getattr__(self, name: str):
+        """Delegate attribute access to the wrapped record when the set
+        contains exactly one record, mimicking Odoo's single-record
+        Recordset behaviour."""
+        if name.startswith('_'):
+            raise AttributeError(name)
+        if len(self._records) == 1:
+            return getattr(self._records[0], name)
+        raise AttributeError(
+            f"Field/method access on a multi-record or empty recordset is not "
+            f"supported. Use iteration or indexing to access individual records."
+        )
+
+
+# ---------------------------------------------------------------------------
 # OdooModel
 # ---------------------------------------------------------------------------
 
@@ -443,6 +520,10 @@ class OdooModel:
             record_id, self._context.copy(), self._client,
         )
 
+    def _make_recordset(self, ids: List[int]) -> OdooRecordset:
+        """Construct an :class:`OdooRecordset` from a list of record IDs."""
+        return OdooRecordset([self._make_record(rid) for rid in ids], self._model)
+
     # ------------------------------------------------------------------
     # Standard model methods
     # ------------------------------------------------------------------
@@ -453,13 +534,16 @@ class OdooModel:
         limit: Optional[int] = None,
         offset: int = 0,
         order: Optional[str] = None,
-    ) -> Union[List[OdooRecord], OdooRecord]:
-        """Search for records.
+    ) -> OdooRecordset:
+        """Search for records and return an :class:`OdooRecordset`.
 
-        When *limit* is ``1`` the return value mimics Odoo's default ORM
-        behaviour: a single :class:`OdooRecord` is returned (falsy when no
-        record matches).  For all other cases a list of
-        :class:`OdooRecord` objects is returned.
+        The returned recordset is empty (falsy) when no records match.
+        When the set contains exactly one record, field values and methods
+        can be accessed directly on the recordset, mirroring Odoo's ORM::
+
+            partner = env('res.partner').search([('name', '=', 'John')], limit=1)
+            if partner:
+                print(partner.name)   # single-record delegation
         """
         kw: Dict = {'offset': offset}
         if limit is not None:
@@ -467,12 +551,8 @@ class OdooModel:
         if order:
             kw['order'] = order
         result = self._make_request("search", [domain or []], kw)
-        if limit == 1:
-            rid = result[0] if isinstance(result, list) and result else 0
-            return self._make_record(rid)
-        if not result:
-            return []
-        return [self._make_record(rid) for rid in result]
+        ids = result if isinstance(result, list) else []
+        return self._make_recordset(ids)
 
     def search_read(
         self,
@@ -528,11 +608,23 @@ class OdooModel:
             kw['fields'] = fields
         return self._make_request("read", [ids], kw) or []
 
-    def browse(self, ids: Union[int, List[int]]) -> Union[OdooRecord, List[OdooRecord]]:
-        """Return an :class:`OdooRecord` (or list thereof) for the given *ids*."""
+    def browse(self, ids: Union[int, List[int]]) -> OdooRecordset:
+        """Return an :class:`OdooRecordset` for the given *ids*.
+
+        Accepts either a single integer or a list of integers.  The
+        returned recordset supports iteration, indexing, and — when it
+        contains exactly one record — direct field access::
+
+            partner = env('res.partner').browse(1)
+            print(partner.name)
+
+            partners = env('res.partner').browse([1, 2, 3])
+            for p in partners:
+                print(p.name)
+        """
         if isinstance(ids, int):
-            return self._make_record(ids)
-        return [self._make_record(rid) for rid in ids]
+            ids = [ids]
+        return self._make_recordset(ids)
 
     # ------------------------------------------------------------------
     # Context / user modifiers

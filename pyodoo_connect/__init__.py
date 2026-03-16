@@ -14,6 +14,7 @@ from .odoo import (
     OdooSession,
     OdooModel,
     OdooRecord,
+    OdooRecordset,
     OdooException,
     OdooConnectionError,
     OdooAuthenticationError,
