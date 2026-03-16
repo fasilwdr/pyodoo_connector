@@ -9,6 +9,7 @@ outside an Odoo environment.
 
 - 🔐 Simple session-based authentication
 - 🌐 `OdooSession` — mirrors `self.env` in Odoo
+- 📋 `OdooRecordset` — Odoo-style recordsets with `ids`, `mapped`, `filtered`, `sorted`, `ensure_one`, set operations
 - 📝 Direct access to all Odoo model methods
 - 🔍 `search`, `search_read`, `search_count`, `read`, `browse`
 - ✏️ `create`, `write`, `unlink`
@@ -67,12 +68,17 @@ Partner = env['res.partner']
 ### Search for records
 
 ```python
-# Returns a list of OdooRecord objects
+# Returns an OdooRecordset — iterate, index, check len, etc.
 partners = Partner.search([('is_company', '=', True)], limit=10)
 
 for partner in partners:
     print(partner.name)   # field values are fetched lazily and cached
     print(partner.email)
+
+# Singleton field delegation — access fields directly on a single-record set
+partner = Partner.search([('name', '=', 'John')], limit=1)
+if partner:               # falsy when empty
+    print(partner.name)   # field delegation on single-record set
 ```
 
 ### Search and read (returns dicts)
@@ -126,8 +132,31 @@ Partner.unlink([4, 5, 6])
 ### Browse by ID
 
 ```python
-partner = Partner.browse(1)          # single OdooRecord
-partners = Partner.browse([1, 2, 3]) # list of OdooRecord
+partner = Partner.browse(1)          # single-record OdooRecordset
+partners = Partner.browse([1, 2, 3]) # multi-record OdooRecordset
+print(partners.ids)                  # [1, 2, 3]
+```
+
+### Recordset helpers
+
+```python
+# mapped — collect field values across all records
+names = partners.mapped('name')      # ['Alice', 'Bob', 'Charlie']
+
+# filtered — keep records matching a condition
+companies = partners.filtered(lambda r: r.is_company)
+
+# sorted — sort by field or key
+by_name = partners.sorted('name')
+by_id_desc = partners.sorted(reverse=True)
+
+# ensure_one — raise ValueError if not exactly one record
+partner = partners.filtered(lambda r: r.id == 1).ensure_one()
+
+# set operations
+all_partners = partners1 | partners2   # union (deduplicated)
+common = partners1 & partners2         # intersection
+diff = partners1 - partners2           # difference
 ```
 
 ### Read raw data
@@ -282,6 +311,25 @@ except OdooException as e:
 ```
 
 ---
+
+## What's New in Version 0.3.1
+
+- **`OdooRecordset`** — new class mirroring Odoo's native recordset API;
+  `search()`, `browse()`, and `create()` now return `OdooRecordset` instead
+  of plain lists or single `OdooRecord`
+- **Iteration, indexing, `len()`, `bool()`** — recordsets support all
+  standard collection operations; empty recordsets are falsy
+- **`.ids`** property — returns a list of integer IDs for all records
+- **`.mapped(field_name)`** — collect field values across all records
+- **`.filtered(func)`** — return a new recordset with matching records
+- **`.sorted(key, reverse)`** — sort by ID, field name, or callable
+- **`.ensure_one()`** — raise `ValueError` if not exactly one record
+- **Singleton field delegation** — access fields directly on single-record
+  recordsets: `partner.name` works when the recordset has exactly one record
+- **Set operations** — `|` (union), `&` (intersection), `-` (difference),
+  `+` (concatenation) on recordsets
+- **Batch `write()` / `unlink()`** on recordsets — single RPC call for all IDs
+- **`sudo()`, `with_user()`, `with_context()`, `refresh()`** on recordsets
 
 ## What's New in Version 0.3.0
 
