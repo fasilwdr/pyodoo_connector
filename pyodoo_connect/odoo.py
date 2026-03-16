@@ -1,6 +1,8 @@
-from typing import Optional, Any, List, Dict, Union
+from typing import Optional, Any, List, Dict, Union, Tuple
 import httpx
 import warnings
+
+_sorted = sorted  # preserve built-in before OdooRecordset.sorted shadows the name
 
 
 # ---------------------------------------------------------------------------
@@ -346,6 +348,263 @@ class OdooRecord:
 
 
 # ---------------------------------------------------------------------------
+# OdooRecordset
+# ---------------------------------------------------------------------------
+
+class OdooRecordset:
+    """
+    An ordered collection of :class:`OdooRecord` objects for the same model.
+
+    Mirrors the Odoo recordset API: supports iteration, indexing, boolean
+    checks (falsy when empty), field delegation on singletons, and common
+    helpers like ``mapped``, ``filtered``, ``sorted``, and ``ensure_one``.
+
+    Obtain a recordset via :class:`OdooModel`::
+
+        partners = env('res.partner').search([('is_company', '=', True)])
+        for p in partners:
+            print(p.name)
+
+        single = env('res.partner').browse(42)
+        print(single.name)  # field delegation on singleton
+    """
+
+    __slots__ = ('_records', '_model', '_session_id', '_url', '_context', '_client')
+
+    def __init__(
+        self,
+        records: Tuple[OdooRecord, ...],
+        model: str,
+        session_id: str,
+        url: str,
+        context: Optional[dict] = None,
+        client: Optional[httpx.Client] = None,
+    ):
+        self._records: tuple = tuple(records)
+        self._model: str = model
+        self._session_id: str = session_id
+        self._url: str = url
+        self._context: dict = context if context is not None else {"lang": "en_US", "tz": "UTC"}
+        self._client: Optional[httpx.Client] = client
+
+    # ------------------------------------------------------------------
+    # Internal helper
+    # ------------------------------------------------------------------
+
+    def _new(self, records) -> 'OdooRecordset':
+        """Build a new recordset from *records*, reusing model metadata."""
+        return OdooRecordset(
+            tuple(records), self._model, self._session_id,
+            self._url, self._context.copy(), self._client,
+        )
+
+    # ------------------------------------------------------------------
+    # Identity / dunder
+    # ------------------------------------------------------------------
+
+    @property
+    def ids(self) -> List[int]:
+        """Return a list of integer database IDs for all records."""
+        return [r._id for r in self._records]
+
+    @property
+    def id(self) -> int:
+        """The database ID of the singleton record. Raises ValueError if not singleton."""
+        self.ensure_one()
+        return self._records[0]._id
+
+    def __iter__(self):
+        """Iterate over records in the set."""
+        return iter(self._records)
+
+    def __len__(self) -> int:
+        """Return the number of records."""
+        return len(self._records)
+
+    def __bool__(self) -> bool:
+        """True if the recordset is non-empty."""
+        return len(self._records) > 0
+
+    def __getitem__(self, index):
+        """Integer index returns an OdooRecord, slice returns a new OdooRecordset."""
+        if isinstance(index, slice):
+            return self._new(self._records[index])
+        return self._records[index]
+
+    def __contains__(self, item) -> bool:
+        """Check if a record is in the set."""
+        return item in self._records
+
+    def __repr__(self) -> str:
+        ids_str = ", ".join(str(r._id) for r in self._records)
+        return f"{self._model}({ids_str})"
+
+    def __str__(self) -> str:
+        return self.__repr__()
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, OdooRecordset):
+            return self._model == other._model and self._records == other._records
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash((self._model, self._records))
+
+    # ------------------------------------------------------------------
+    # Singleton field / method delegation
+    # ------------------------------------------------------------------
+
+    def __getattr__(self, name: str):
+        """
+        For singleton recordsets, delegate attribute access to the single record.
+        For multi-record or empty recordsets, raise ValueError.
+        """
+        if name.startswith('_'):
+            raise AttributeError(name)
+        if len(self._records) == 1:
+            return getattr(self._records[0], name)
+        raise ValueError(
+            f"Expected singleton: {self._model} recordset contains "
+            f"{len(self._records)} records"
+        )
+
+    # ------------------------------------------------------------------
+    # Recordset helpers
+    # ------------------------------------------------------------------
+
+    def mapped(self, field_name: str) -> list:
+        """
+        Return a list of field values for the given *field_name* across all records.
+
+        Uses the internal ``_get_field`` method for consistency with lazy caching.
+        """
+        return [record._get_field(field_name) for record in self._records]
+
+    def filtered(self, func) -> 'OdooRecordset':
+        """
+        Return a new recordset containing only records for which *func(record)*
+        is truthy.
+        """
+        return self._new(r for r in self._records if func(r))
+
+    def sorted(self, key=None, reverse: bool = False) -> 'OdooRecordset':
+        """
+        Return a new recordset sorted by *key*.
+
+        If *key* is ``None``, records are sorted by database ID.
+        If *key* is a string, it is treated as a field name.
+        If *key* is callable, it receives each record.
+        """
+        if key is None:
+            sort_key = lambda r: r._id
+        elif isinstance(key, str):
+            field_name = key
+            sort_key = lambda r: r._get_field(field_name)
+        else:
+            sort_key = key
+        return self._new(_sorted(self._records, key=sort_key, reverse=reverse))
+
+    def ensure_one(self) -> 'OdooRecordset':
+        """
+        Raise :class:`ValueError` if this recordset does not contain exactly
+        one record.  Returns ``self`` for chaining.
+        """
+        if len(self._records) != 1:
+            raise ValueError(
+                f"Expected singleton: {self._model} recordset contains "
+                f"{len(self._records)} records"
+            )
+        return self
+
+    # ------------------------------------------------------------------
+    # Batch CRUD
+    # ------------------------------------------------------------------
+
+    def write(self, values: Dict) -> bool:
+        """Write *values* to all records in the set in a single RPC call."""
+        if not self._records:
+            return True
+        ids = self.ids
+        result = self._records[0]._make_request("write", [ids, values])
+        for record in self._records:
+            record._cache.clear()
+        return bool(result)
+
+    def unlink(self) -> bool:
+        """Delete all records in the set in a single RPC call."""
+        if not self._records:
+            return True
+        ids = self.ids
+        return bool(self._records[0]._make_request("unlink", [ids]))
+
+    # ------------------------------------------------------------------
+    # Set operations
+    # ------------------------------------------------------------------
+
+    def __add__(self, other: 'OdooRecordset') -> 'OdooRecordset':
+        """Concatenation (preserves order, may contain duplicates)."""
+        if not isinstance(other, OdooRecordset):
+            return NotImplemented
+        return self._new(self._records + other._records)
+
+    def __or__(self, other: 'OdooRecordset') -> 'OdooRecordset':
+        """Union (preserves order, removes duplicates)."""
+        if not isinstance(other, OdooRecordset):
+            return NotImplemented
+        seen: set = set()
+        result: list = []
+        for r in self._records + other._records:
+            key = (r._model, r._id)
+            if key not in seen:
+                seen.add(key)
+                result.append(r)
+        return self._new(result)
+
+    def __sub__(self, other: 'OdooRecordset') -> 'OdooRecordset':
+        """Difference (records in self but not in other)."""
+        if not isinstance(other, OdooRecordset):
+            return NotImplemented
+        other_keys = {(r._model, r._id) for r in other._records}
+        return self._new(r for r in self._records if (r._model, r._id) not in other_keys)
+
+    def __and__(self, other: 'OdooRecordset') -> 'OdooRecordset':
+        """Intersection (records in both self and other, order from self)."""
+        if not isinstance(other, OdooRecordset):
+            return NotImplemented
+        other_keys = {(r._model, r._id) for r in other._records}
+        return self._new(r for r in self._records if (r._model, r._id) in other_keys)
+
+    # ------------------------------------------------------------------
+    # Context / user modifiers
+    # ------------------------------------------------------------------
+
+    def sudo(self) -> 'OdooRecordset':
+        """Return a new recordset with sudo-modified records."""
+        return self._new(r.sudo() for r in self._records)
+
+    def with_user(self, user_id: int) -> 'OdooRecordset':
+        """Return a new recordset with user-modified records."""
+        return self._new(r.with_user(user_id) for r in self._records)
+
+    def with_context(self, *args, **kwargs) -> 'OdooRecordset':
+        """Return a new recordset with context-modified records."""
+        new_records = tuple(r.with_context(*args, **kwargs) for r in self._records)
+        context = self._context.copy()
+        if args and isinstance(args[0], dict):
+            context.update(args[0])
+        context.update(kwargs)
+        return OdooRecordset(
+            new_records, self._model, self._session_id,
+            self._url, context, self._client,
+        )
+
+    def refresh(self) -> None:
+        """Invalidate the local field cache on all records."""
+        for record in self._records:
+            record.refresh()
+
+
+# ---------------------------------------------------------------------------
 # OdooModel
 # ---------------------------------------------------------------------------
 
@@ -443,6 +702,14 @@ class OdooModel:
             record_id, self._context.copy(), self._client,
         )
 
+    def _make_recordset(self, record_ids: List[int]) -> OdooRecordset:
+        """Construct an :class:`OdooRecordset` from a list of IDs."""
+        records = tuple(self._make_record(rid) for rid in record_ids)
+        return OdooRecordset(
+            records, self._model, self._session_id,
+            self._url, self._context.copy(), self._client,
+        )
+
     # ------------------------------------------------------------------
     # Standard model methods
     # ------------------------------------------------------------------
@@ -453,8 +720,8 @@ class OdooModel:
         limit: Optional[int] = None,
         offset: int = 0,
         order: Optional[str] = None,
-    ) -> List[OdooRecord]:
-        """Search for records and return a list of :class:`OdooRecord` objects."""
+    ) -> OdooRecordset:
+        """Search for records and return an :class:`OdooRecordset`."""
         kw: Dict = {'offset': offset}
         if limit is not None:
             kw['limit'] = limit
@@ -462,8 +729,8 @@ class OdooModel:
             kw['order'] = order
         result = self._make_request("search", [domain or []], kw)
         if not result:
-            return []
-        return [self._make_record(rid) for rid in result]
+            return self._make_recordset([])
+        return self._make_recordset(result)
 
     def search_read(
         self,
@@ -487,11 +754,11 @@ class OdooModel:
         """Return the number of records matching *domain*."""
         return self._make_request("search_count", [domain or []]) or 0
 
-    def create(self, values: Dict) -> OdooRecord:
-        """Create a new record and return an :class:`OdooRecord` for it."""
+    def create(self, values: Dict) -> OdooRecordset:
+        """Create a new record and return an :class:`OdooRecordset` for it."""
         result = self._make_request("create", [values])
         if result:
-            return self._make_record(result)
+            return self._make_recordset([result])
         raise OdooValidationError("Create operation returned no ID")
 
     def write(self, ids: Union[int, List[int]], values: Dict) -> bool:
@@ -519,11 +786,11 @@ class OdooModel:
             kw['fields'] = fields
         return self._make_request("read", [ids], kw) or []
 
-    def browse(self, ids: Union[int, List[int]]) -> Union[OdooRecord, List[OdooRecord]]:
-        """Return an :class:`OdooRecord` (or list thereof) for the given *ids*."""
+    def browse(self, ids: Union[int, List[int]]) -> OdooRecordset:
+        """Return an :class:`OdooRecordset` for the given *ids*."""
         if isinstance(ids, int):
-            return self._make_record(ids)
-        return [self._make_record(rid) for rid in ids]
+            return self._make_recordset([ids])
+        return self._make_recordset(ids)
 
     # ------------------------------------------------------------------
     # Context / user modifiers

@@ -7,7 +7,7 @@
 # Instagram: https://www.instagram.com/fasilwdr
 #############################################################################
 """
-Mock-based unit tests for pyodoo_connect v0.3.0.
+Mock-based unit tests for pyodoo_connect v0.3.1.
 No live Odoo server is required.
 """
 import pytest
@@ -18,6 +18,7 @@ from pyodoo_connect import (
     connect_model,
     OdooSession,
     OdooModel,
+    OdooRecordset,
     OdooRecord,
     Command,
     OdooException,
@@ -255,9 +256,10 @@ class TestOdooSession:
 
 class TestOdooModelSearch:
 
-    def test_search_returns_list_of_records(self, mock_http_client, partner_model):
+    def test_search_returns_recordset(self, mock_http_client, partner_model):
         mock_http_client.post.return_value = _mock_response(result=[1, 2, 3])
         records = partner_model.search([("is_company", "=", True)])
+        assert isinstance(records, OdooRecordset)
         assert len(records) == 3
         assert all(isinstance(r, OdooRecord) for r in records)
 
@@ -270,12 +272,16 @@ class TestOdooModelSearch:
     def test_search_empty_result(self, mock_http_client, partner_model):
         mock_http_client.post.return_value = _mock_response(result=[])
         records = partner_model.search([("name", "=", "Nobody")])
-        assert records == []
+        assert isinstance(records, OdooRecordset)
+        assert len(records) == 0
+        assert not records
 
     def test_search_false_result(self, mock_http_client, partner_model):
         mock_http_client.post.return_value = _mock_response(result=False)
         records = partner_model.search([])
-        assert records == []
+        assert isinstance(records, OdooRecordset)
+        assert len(records) == 0
+        assert not records
 
     def test_search_with_limit(self, mock_http_client, partner_model):
         mock_http_client.post.return_value = _mock_response(result=[1, 2])
@@ -355,11 +361,13 @@ class TestOdooModelSearchCount:
 
 class TestOdooModelCreate:
 
-    def test_returns_record(self, mock_http_client, partner_model):
+    def test_returns_recordset(self, mock_http_client, partner_model):
         mock_http_client.post.return_value = _mock_response(result=99)
         record = partner_model.create({"name": "New Partner"})
-        assert isinstance(record, OdooRecord)
+        assert isinstance(record, OdooRecordset)
+        assert len(record) == 1
         assert record.id == 99
+        assert record.ids == [99]
 
     def test_create_validation_error_on_false(self, mock_http_client, partner_model):
         mock_http_client.post.return_value = _mock_response(result=False)
@@ -437,17 +445,21 @@ class TestOdooModelBrowse:
 
     def test_browse_single_int(self, partner_model):
         record = partner_model.browse(7)
-        assert isinstance(record, OdooRecord)
+        assert isinstance(record, OdooRecordset)
+        assert len(record) == 1
         assert record.id == 7
+        assert record.ids == [7]
 
     def test_browse_list(self, partner_model):
         records = partner_model.browse([1, 2, 3])
+        assert isinstance(records, OdooRecordset)
         assert len(records) == 3
+        assert records.ids == [1, 2, 3]
         assert [r.id for r in records] == [1, 2, 3]
 
     def test_browse_shares_client(self, session, partner_model):
         record = partner_model.browse(1)
-        assert record._client is session._client
+        assert record[0]._client is session._client
 
 
 # ===========================================================================
@@ -1160,6 +1172,450 @@ class TestRequestHeaders:
         partner_model.search([])
         called_url = mock_http_client.post.call_args[0][0]
         assert "/web/dataset/call_kw/res.partner/search" in called_url
+
+
+# ===========================================================================
+# OdooRecordset – core behaviour
+# ===========================================================================
+
+@pytest.fixture
+def partner_recordset(session):
+    """Return a 3-record OdooRecordset backed by the mock client."""
+    records = tuple(
+        OdooRecord(
+            session_id="test_session_123",
+            url="https://test.odoo.com",
+            model="res.partner",
+            record_id=rid,
+            context={"lang": "en_US", "tz": "UTC"},
+            client=session._client,
+        )
+        for rid in [1, 2, 3]
+    )
+    return OdooRecordset(
+        records, "res.partner", "test_session_123",
+        "https://test.odoo.com", {"lang": "en_US", "tz": "UTC"},
+        session._client,
+    )
+
+
+@pytest.fixture
+def empty_recordset(session):
+    """Return an empty OdooRecordset."""
+    return OdooRecordset(
+        (), "res.partner", "test_session_123",
+        "https://test.odoo.com", {"lang": "en_US", "tz": "UTC"},
+        session._client,
+    )
+
+
+@pytest.fixture
+def singleton_recordset(session):
+    """Return a single-record OdooRecordset."""
+    record = OdooRecord(
+        session_id="test_session_123",
+        url="https://test.odoo.com",
+        model="res.partner",
+        record_id=42,
+        context={"lang": "en_US", "tz": "UTC"},
+        client=session._client,
+    )
+    return OdooRecordset(
+        (record,), "res.partner", "test_session_123",
+        "https://test.odoo.com", {"lang": "en_US", "tz": "UTC"},
+        session._client,
+    )
+
+
+class TestOdooRecordsetCore:
+
+    def test_len(self, partner_recordset):
+        assert len(partner_recordset) == 3
+
+    def test_bool_true(self, partner_recordset):
+        assert bool(partner_recordset) is True
+
+    def test_bool_false_empty(self, empty_recordset):
+        assert bool(empty_recordset) is False
+
+    def test_iter(self, partner_recordset):
+        items = list(partner_recordset)
+        assert len(items) == 3
+        assert all(isinstance(r, OdooRecord) for r in items)
+
+    def test_getitem_int(self, partner_recordset):
+        r = partner_recordset[0]
+        assert isinstance(r, OdooRecord)
+        assert r.id == 1
+
+    def test_getitem_negative_index(self, partner_recordset):
+        assert partner_recordset[-1].id == 3
+
+    def test_getitem_slice(self, partner_recordset):
+        sliced = partner_recordset[0:2]
+        assert isinstance(sliced, OdooRecordset)
+        assert len(sliced) == 2
+        assert sliced.ids == [1, 2]
+
+    def test_contains(self, partner_recordset):
+        r = partner_recordset[0]
+        assert r in partner_recordset
+
+    def test_repr(self, partner_recordset):
+        assert repr(partner_recordset) == "res.partner(1, 2, 3)"
+
+    def test_repr_empty(self, empty_recordset):
+        assert repr(empty_recordset) == "res.partner()"
+
+    def test_repr_singleton(self, singleton_recordset):
+        assert repr(singleton_recordset) == "res.partner(42)"
+
+    def test_str(self, partner_recordset):
+        assert str(partner_recordset) == "res.partner(1, 2, 3)"
+
+    def test_eq(self, session):
+        rs1 = OdooRecordset(
+            tuple(OdooRecord("sid", "url", "res.partner", i, client=session._client) for i in [1, 2]),
+            "res.partner", "sid", "url", client=session._client,
+        )
+        rs2 = OdooRecordset(
+            tuple(OdooRecord("sid", "url", "res.partner", i, client=session._client) for i in [1, 2]),
+            "res.partner", "sid", "url", client=session._client,
+        )
+        assert rs1 == rs2
+
+    def test_neq_different_records(self, session):
+        rs1 = OdooRecordset(
+            tuple(OdooRecord("sid", "url", "res.partner", i, client=session._client) for i in [1, 2]),
+            "res.partner", "sid", "url", client=session._client,
+        )
+        rs2 = OdooRecordset(
+            tuple(OdooRecord("sid", "url", "res.partner", i, client=session._client) for i in [1, 3]),
+            "res.partner", "sid", "url", client=session._client,
+        )
+        assert rs1 != rs2
+
+    def test_hash(self, session):
+        rs1 = OdooRecordset(
+            tuple(OdooRecord("sid", "url", "res.partner", i, client=session._client) for i in [1, 2]),
+            "res.partner", "sid", "url", client=session._client,
+        )
+        rs2 = OdooRecordset(
+            tuple(OdooRecord("sid", "url", "res.partner", i, client=session._client) for i in [1, 2]),
+            "res.partner", "sid", "url", client=session._client,
+        )
+        assert hash(rs1) == hash(rs2)
+
+    def test_ids(self, partner_recordset):
+        assert partner_recordset.ids == [1, 2, 3]
+
+    def test_ids_empty(self, empty_recordset):
+        assert empty_recordset.ids == []
+
+    def test_id_singleton(self, singleton_recordset):
+        assert singleton_recordset.id == 42
+
+    def test_id_multi_raises(self, partner_recordset):
+        with pytest.raises(ValueError, match="Expected singleton"):
+            _ = partner_recordset.id
+
+    def test_id_empty_raises(self, empty_recordset):
+        with pytest.raises(ValueError, match="Expected singleton"):
+            _ = empty_recordset.id
+
+
+# ===========================================================================
+# OdooRecordset – singleton field delegation
+# ===========================================================================
+
+class TestOdooRecordsetFieldDelegation:
+
+    def test_singleton_field_access(self, mock_http_client, singleton_recordset):
+        mock_http_client.post.return_value = _mock_response(
+            result=[{"id": 42, "name": "John Doe"}]
+        )
+        assert str(singleton_recordset.name) == "John Doe"
+
+    def test_singleton_field_eq(self, mock_http_client, singleton_recordset):
+        mock_http_client.post.return_value = _mock_response(
+            result=[{"id": 42, "name": "Alice"}]
+        )
+        assert singleton_recordset.name == "Alice"
+
+    def test_singleton_method_call(self, mock_http_client, singleton_recordset):
+        mock_http_client.post.return_value = _mock_response(result=True)
+        result = singleton_recordset.action_confirm()
+        assert result is True
+        payload = mock_http_client.post.call_args[1]["json"]
+        assert payload["params"]["method"] == "action_confirm"
+
+    def test_multi_record_field_raises(self, partner_recordset):
+        with pytest.raises(ValueError, match="Expected singleton"):
+            _ = partner_recordset.name
+
+    def test_empty_field_raises(self, empty_recordset):
+        with pytest.raises(ValueError, match="Expected singleton"):
+            _ = empty_recordset.name
+
+    def test_private_attr_raises_attribute_error(self, singleton_recordset):
+        with pytest.raises(AttributeError):
+            _ = singleton_recordset._something
+
+
+# ===========================================================================
+# OdooRecordset – mapped
+# ===========================================================================
+
+class TestOdooRecordsetMapped:
+
+    def test_mapped_returns_field_values(self, mock_http_client, partner_recordset):
+        # Each record will make a separate _get_field call
+        mock_http_client.post.side_effect = [
+            _mock_response(result=[{"id": 1, "name": "Alice"}]),
+            _mock_response(result=[{"id": 2, "name": "Bob"}]),
+            _mock_response(result=[{"id": 3, "name": "Charlie"}]),
+        ]
+        names = partner_recordset.mapped("name")
+        assert names == ["Alice", "Bob", "Charlie"]
+
+    def test_mapped_empty(self, empty_recordset):
+        assert empty_recordset.mapped("name") == []
+
+
+# ===========================================================================
+# OdooRecordset – filtered
+# ===========================================================================
+
+class TestOdooRecordsetFiltered:
+
+    def test_filtered_by_callable(self, partner_recordset):
+        result = partner_recordset.filtered(lambda r: r.id > 1)
+        assert isinstance(result, OdooRecordset)
+        assert result.ids == [2, 3]
+
+    def test_filtered_empty_result(self, partner_recordset):
+        result = partner_recordset.filtered(lambda r: r.id > 100)
+        assert len(result) == 0
+        assert not result
+
+
+# ===========================================================================
+# OdooRecordset – sorted
+# ===========================================================================
+
+class TestOdooRecordsetSorted:
+
+    def test_sorted_default_by_id(self, session):
+        records = tuple(
+            OdooRecord("sid", "url", "res.partner", i, client=session._client)
+            for i in [3, 1, 2]
+        )
+        rs = OdooRecordset(records, "res.partner", "sid", "url", client=session._client)
+        result = rs.sorted()
+        assert result.ids == [1, 2, 3]
+
+    def test_sorted_reverse(self, partner_recordset):
+        result = partner_recordset.sorted(reverse=True)
+        assert result.ids == [3, 2, 1]
+
+    def test_sorted_by_callable(self, partner_recordset):
+        result = partner_recordset.sorted(key=lambda r: -r.id)
+        assert result.ids == [3, 2, 1]
+
+    def test_sorted_returns_recordset(self, partner_recordset):
+        assert isinstance(partner_recordset.sorted(), OdooRecordset)
+
+
+# ===========================================================================
+# OdooRecordset – ensure_one
+# ===========================================================================
+
+class TestOdooRecordsetEnsureOne:
+
+    def test_singleton_returns_self(self, singleton_recordset):
+        result = singleton_recordset.ensure_one()
+        assert result is singleton_recordset
+
+    def test_empty_raises(self, empty_recordset):
+        with pytest.raises(ValueError, match="Expected singleton"):
+            empty_recordset.ensure_one()
+
+    def test_multi_raises(self, partner_recordset):
+        with pytest.raises(ValueError, match="Expected singleton"):
+            partner_recordset.ensure_one()
+
+    def test_error_message_contains_count(self, partner_recordset):
+        with pytest.raises(ValueError, match="3 records"):
+            partner_recordset.ensure_one()
+
+
+# ===========================================================================
+# OdooRecordset – batch write / unlink
+# ===========================================================================
+
+class TestOdooRecordsetBatchWrite:
+
+    def test_write_single_rpc(self, mock_http_client, partner_recordset):
+        mock_http_client.post.return_value = _mock_response(result=True)
+        assert partner_recordset.write({"active": False}) is True
+        payload = mock_http_client.post.call_args[1]["json"]
+        assert payload["params"]["args"][0] == [1, 2, 3]
+
+    def test_write_clears_all_caches(self, mock_http_client, partner_recordset):
+        for r in partner_recordset:
+            r._cache["name"] = "old"
+        mock_http_client.post.return_value = _mock_response(result=True)
+        partner_recordset.write({"name": "new"})
+        for r in partner_recordset:
+            assert "name" not in r._cache
+
+    def test_write_empty_no_rpc(self, mock_http_client, empty_recordset):
+        assert empty_recordset.write({"name": "x"}) is True
+        mock_http_client.post.assert_not_called()
+
+
+class TestOdooRecordsetBatchUnlink:
+
+    def test_unlink_single_rpc(self, mock_http_client, partner_recordset):
+        mock_http_client.post.return_value = _mock_response(result=True)
+        assert partner_recordset.unlink() is True
+        payload = mock_http_client.post.call_args[1]["json"]
+        assert payload["params"]["args"][0] == [1, 2, 3]
+
+    def test_unlink_empty_no_rpc(self, mock_http_client, empty_recordset):
+        assert empty_recordset.unlink() is True
+        mock_http_client.post.assert_not_called()
+
+
+# ===========================================================================
+# OdooRecordset – set operations
+# ===========================================================================
+
+class TestOdooRecordsetSetOperations:
+
+    def test_add_concatenates(self, session):
+        rs1 = OdooRecordset(
+            tuple(OdooRecord("sid", "url", "res.partner", i, client=session._client) for i in [1, 2]),
+            "res.partner", "sid", "url", client=session._client,
+        )
+        rs2 = OdooRecordset(
+            tuple(OdooRecord("sid", "url", "res.partner", i, client=session._client) for i in [2, 3]),
+            "res.partner", "sid", "url", client=session._client,
+        )
+        result = rs1 + rs2
+        assert isinstance(result, OdooRecordset)
+        assert result.ids == [1, 2, 2, 3]
+
+    def test_or_deduplicates(self, session):
+        rs1 = OdooRecordset(
+            tuple(OdooRecord("sid", "url", "res.partner", i, client=session._client) for i in [1, 2]),
+            "res.partner", "sid", "url", client=session._client,
+        )
+        rs2 = OdooRecordset(
+            tuple(OdooRecord("sid", "url", "res.partner", i, client=session._client) for i in [2, 3]),
+            "res.partner", "sid", "url", client=session._client,
+        )
+        result = rs1 | rs2
+        assert result.ids == [1, 2, 3]
+
+    def test_sub_removes(self, session):
+        rs1 = OdooRecordset(
+            tuple(OdooRecord("sid", "url", "res.partner", i, client=session._client) for i in [1, 2, 3]),
+            "res.partner", "sid", "url", client=session._client,
+        )
+        rs2 = OdooRecordset(
+            tuple(OdooRecord("sid", "url", "res.partner", i, client=session._client) for i in [2]),
+            "res.partner", "sid", "url", client=session._client,
+        )
+        result = rs1 - rs2
+        assert result.ids == [1, 3]
+
+    def test_and_intersects(self, session):
+        rs1 = OdooRecordset(
+            tuple(OdooRecord("sid", "url", "res.partner", i, client=session._client) for i in [1, 2, 3]),
+            "res.partner", "sid", "url", client=session._client,
+        )
+        rs2 = OdooRecordset(
+            tuple(OdooRecord("sid", "url", "res.partner", i, client=session._client) for i in [2, 3, 4]),
+            "res.partner", "sid", "url", client=session._client,
+        )
+        result = rs1 & rs2
+        assert result.ids == [2, 3]
+
+    def test_add_with_non_recordset_returns_not_implemented(self, partner_recordset):
+        result = partner_recordset.__add__(5)
+        assert result is NotImplemented
+
+
+# ===========================================================================
+# OdooRecordset – context modifiers
+# ===========================================================================
+
+class TestOdooRecordsetModifiers:
+
+    def test_sudo_returns_recordset(self, partner_recordset):
+        result = partner_recordset.sudo()
+        assert isinstance(result, OdooRecordset)
+        assert result.ids == partner_recordset.ids
+
+    def test_with_user_returns_recordset(self, partner_recordset):
+        result = partner_recordset.with_user(3)
+        assert isinstance(result, OdooRecordset)
+        assert result.ids == partner_recordset.ids
+
+    def test_with_context_updates(self, partner_recordset):
+        result = partner_recordset.with_context(lang="fr_FR")
+        assert result._context["lang"] == "fr_FR"
+
+    def test_refresh_clears_all_caches(self, partner_recordset):
+        for r in partner_recordset:
+            r._cache["name"] = "cached"
+        partner_recordset.refresh()
+        for r in partner_recordset:
+            assert "name" not in r._cache
+
+
+# ===========================================================================
+# OdooRecordset – integration with OdooModel
+# ===========================================================================
+
+class TestOdooRecordsetIntegration:
+    """Test that OdooModel methods correctly return OdooRecordset."""
+
+    def test_search_iteration(self, mock_http_client, partner_model):
+        mock_http_client.post.return_value = _mock_response(result=[10, 20, 30])
+        records = partner_model.search([("is_company", "=", True)])
+        ids = [r.id for r in records]
+        assert ids == [10, 20, 30]
+
+    def test_search_singleton_field_delegation(self, mock_http_client, partner_model):
+        """search with limit=1 returns recordset where field delegation works."""
+        mock_http_client.post.return_value = _mock_response(result=[42])
+        partner = partner_model.search([("name", "=", "John")], limit=1)
+        assert bool(partner)  # truthy when non-empty
+        mock_http_client.post.return_value = _mock_response(
+            result=[{"id": 42, "name": "John"}]
+        )
+        assert partner.name == "John"  # field delegation on singleton
+
+    def test_search_empty_is_falsy(self, mock_http_client, partner_model):
+        mock_http_client.post.return_value = _mock_response(result=[])
+        records = partner_model.search([("name", "=", "Nobody")])
+        assert not records
+        assert len(records) == 0
+
+    def test_browse_list_ids(self, mock_http_client, partner_model):
+        partners = partner_model.browse([1, 2, 3])
+        assert partners.ids == [1, 2, 3]
+
+    def test_browse_list_mapped(self, mock_http_client, partner_model):
+        partners = partner_model.browse([10, 20])
+        mock_http_client.post.side_effect = [
+            _mock_response(result=[{"id": 10, "name": "Alpha"}]),
+            _mock_response(result=[{"id": 20, "name": "Beta"}]),
+        ]
+        names = partners.mapped("name")
+        assert names == ["Alpha", "Beta"]
 
 
 if __name__ == "__main__":

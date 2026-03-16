@@ -13,6 +13,7 @@ from .odoo import (
     connect_model,
     OdooSession,
     OdooModel,
+    OdooRecordset,
     OdooRecord,
     OdooException,
     OdooConnectionError,
@@ -23,4 +24,4 @@ from .odoo import (
 from .tools import Command
 from .http import connect_http
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
