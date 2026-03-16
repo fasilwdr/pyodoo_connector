@@ -453,14 +453,23 @@ class OdooModel:
         limit: Optional[int] = None,
         offset: int = 0,
         order: Optional[str] = None,
-    ) -> List[OdooRecord]:
-        """Search for records and return a list of :class:`OdooRecord` objects."""
+    ) -> Union[List[OdooRecord], OdooRecord]:
+        """Search for records.
+
+        When *limit* is ``1`` the return value mimics Odoo's default ORM
+        behaviour: a single :class:`OdooRecord` is returned (falsy when no
+        record matches).  For all other cases a list of
+        :class:`OdooRecord` objects is returned.
+        """
         kw: Dict = {'offset': offset}
         if limit is not None:
             kw['limit'] = limit
         if order:
             kw['order'] = order
         result = self._make_request("search", [domain or []], kw)
+        if limit == 1:
+            rid = result[0] if isinstance(result, list) and result else 0
+            return self._make_record(rid)
         if not result:
             return []
         return [self._make_record(rid) for rid in result]

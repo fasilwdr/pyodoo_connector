@@ -301,6 +301,31 @@ class TestOdooModelSearch:
         payload = mock_http_client.post.call_args[1]["json"]
         assert "limit" not in payload["params"]["kwargs"]
 
+    def test_search_limit_1_returns_single_record(self, mock_http_client, partner_model):
+        mock_http_client.post.return_value = _mock_response(result=[5])
+        record = partner_model.search([("name", "=", "John")], limit=1)
+        assert isinstance(record, OdooRecord)
+        assert record.id == 5
+        assert bool(record) is True
+
+    def test_search_limit_1_empty_result_returns_falsy_record(self, mock_http_client, partner_model):
+        mock_http_client.post.return_value = _mock_response(result=[])
+        record = partner_model.search([("name", "=", "Nobody")], limit=1)
+        assert isinstance(record, OdooRecord)
+        assert bool(record) is False
+
+    def test_search_limit_1_false_result_returns_falsy_record(self, mock_http_client, partner_model):
+        mock_http_client.post.return_value = _mock_response(result=False)
+        record = partner_model.search([("name", "=", "Nobody")], limit=1)
+        assert isinstance(record, OdooRecord)
+        assert bool(record) is False
+
+    def test_search_limit_gt_1_still_returns_list(self, mock_http_client, partner_model):
+        mock_http_client.post.return_value = _mock_response(result=[1, 2])
+        records = partner_model.search([], limit=2)
+        assert isinstance(records, list)
+        assert len(records) == 2
+
 
 # ===========================================================================
 # OdooModel – search_read
