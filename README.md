@@ -15,6 +15,7 @@ outside an Odoo environment.
 - ✏️ `create`, `write`, `unlink`
 - 🧩 `sudo()`, `with_user()`, `with_context()` for API compatibility
 - 📦 Lazy field loading with local caching on `OdooRecord`
+- 🔗 **Related field behaviour** — many2one fields return an `OdooRecordset` of the target model, exactly as in Odoo's native ORM (e.g. `product_template_id.ceteg_id` → `product.category(231)`)
 - 🛡️ Comprehensive error handling with typed exceptions
 - 🔗 Shared `httpx` client for efficient connection reuse
 - 🚀 Lightweight and fast
@@ -117,6 +118,9 @@ new_partner.write({'phone': '+1 800 555 0100'})
 
 # On the model (multiple IDs at once)
 Partner.write([1, 2, 3], {'active': False})
+
+# On a recordsetpartners = env["res.partner"].browse([2,4,5])
+partners.write({"phone": "+162382732"})
 ```
 
 ### Unlink (delete)
@@ -239,6 +243,24 @@ partner.refresh()     # clear cache
 print(partner.name)   # fetches fresh value
 ```
 
+### Related field (many2one) behaviour
+
+Many2one fields return an `OdooRecordset` pointing to the linked record,
+matching Odoo's native ORM behaviour:
+
+```python
+product_tmpl = env('product.template').search(
+    [('default_code', '=', '1234567')], limit=1
+)
+
+# product_variant_id is a many2one field → returns an OdooRecordset
+product_id = product_tmpl.product_variant_id
+print(product_id)          # product.product(591579)
+
+# Field access on the related record works naturally
+print("product name", product_id.name)   # product name Awesome Widget
+```
+
 ---
 
 ## Using Command for relational fields
@@ -309,51 +331,6 @@ except OdooRequestError as e:
 except OdooException as e:
     print(f"General Odoo Error: {e}")
 ```
-
----
-
-## What's New in Version 0.3.1
-
-- **`OdooRecordset`** — new class mirroring Odoo's native recordset API;
-  `search()`, `browse()`, and `create()` now return `OdooRecordset` instead
-  of plain lists or single `OdooRecord`
-- **Iteration, indexing, `len()`, `bool()`** — recordsets support all
-  standard collection operations; empty recordsets are falsy
-- **`.ids`** property — returns a list of integer IDs for all records
-- **`.mapped(field_name)`** — collect field values across all records
-- **`.filtered(func)`** — return a new recordset with matching records
-- **`.sorted(key, reverse)`** — sort by ID, field name, or callable
-- **`.ensure_one()`** — raise `ValueError` if not exactly one record
-- **Singleton field delegation** — access fields directly on single-record
-  recordsets: `partner.name` works when the recordset has exactly one record
-- **Set operations** — `|` (union), `&` (intersection), `-` (difference),
-  `+` (concatenation) on recordsets
-- **Batch `write()` / `unlink()`** on recordsets — single RPC call for all IDs
-- **`sudo()`, `with_user()`, `with_context()`, `refresh()`** on recordsets
-
-## What's New in Version 0.3.0
-
-- **`OdooSession`** — Odoo-style `env` gateway; supports `env('model')` and
-  `env['model']` syntax
-- **Environment variables** — `env.uid`, `env.user`, `env.company`,
-  `env.companies`, `env.lang`, `env.context`; fetched lazily from
-  `/web/session/get_session_info` and cached for the session lifetime
-- **Explicit model methods** — `search`, `search_read`, `search_count`,
-  `read`, `write`, `unlink`, `browse`, `create` with typed signatures
-- **Lazy field access on `OdooRecord`** — `partner.name` transparently
-  fetches field values and caches them; first field access per record
-  populates all returned fields in the cache
-- **Dual field/method proxy (`_FieldProxy`)** — unknown attributes on a
-  record can be used as field values *or* called as Odoo methods
-- **`sudo()`, `with_user()`, `with_context()`** on both models and records
-- **`OdooRecord.id`** property, `__repr__`, `__bool__`, `__eq__`, `__hash__`
-- **Shared `httpx.Client`** — all models/records from a session reuse a
-  single HTTP connection pool
-- **All exceptions exported** from the top-level package
-- **`Command` parameter rename** — `id` → `record_id` in `update`, `delete`,
-  `unlink`, `link`
-- **Python ≥ 3.8** minimum; updated classifiers
-- **Comprehensive mock-based unit test suite**
 
 ---
 
