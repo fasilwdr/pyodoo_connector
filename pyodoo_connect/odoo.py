@@ -182,6 +182,7 @@ class OdooRecord:
         self._own_client: bool = client is None
         self._client: httpx.Client = client if client is not None else httpx.Client()
         self._cache: Dict[str, Any] = {}
+        self._fields_info: Optional[Dict[str, Any]] = None
 
     def __del__(self):
         if self._own_client:
@@ -268,16 +269,52 @@ class OdooRecord:
     # Field access helpers (used by _FieldProxy)
     # ------------------------------------------------------------------
 
+    def _get_fields_info(self) -> Dict[str, Any]:
+        """Fetch and cache fields_get metadata (type and relation) for this model."""
+        if self._fields_info is None:
+            result = self._make_request(
+                "fields_get", [], {"attributes": ["type", "relation"]}
+            )
+            self._fields_info = result if isinstance(result, dict) else {}
+        return self._fields_info
+
+    def _coerce_relational(self, field_name: str, value: Any) -> Any:
+        """
+        Convert a raw many2one value ``[id, display_name]`` to an
+        :class:`OdooRecordset`, matching Odoo's native related-field behaviour.
+
+        Any other value is returned unchanged.
+        """
+        if not (
+            isinstance(value, (list, tuple))
+            and len(value) == 2
+            and isinstance(value[0], int)
+            and isinstance(value[1], str)
+        ):
+            return value
+        fields_info = self._get_fields_info()
+        field_meta = fields_info.get(field_name, {})
+        if field_meta.get("type") == "many2one" and field_meta.get("relation"):
+            comodel = field_meta["relation"]
+            rec = OdooRecord(
+                self._session_id, self._url, comodel,
+                value[0], self._context.copy(), self._client,
+            )
+            return OdooRecordset(
+                (rec,), comodel, self._session_id,
+                self._url, self._context.copy(), self._client,
+            )
+        return value
+
     def _get_field(self, name: str) -> Any:
         """Return a field value, fetching from Odoo on first access."""
-        if name in self._cache:
-            return self._cache[name]
-        result = self._make_request("read", [[self._id], [name]])
-        if result and isinstance(result, list):
-            for k, v in result[0].items():
-                self._cache[k] = v
-            return self._cache.get(name, False)
-        return False
+        if name not in self._cache:
+            result = self._make_request("read", [[self._id], [name]])
+            if result and isinstance(result, list):
+                for k, v in result[0].items():
+                    self._cache[k] = v
+        value = self._cache.get(name, False)
+        return self._coerce_relational(name, value)
 
     def _call_method(self, name: str, *args, **kwargs) -> Any:
         """Call an arbitrary Odoo method on this record."""
